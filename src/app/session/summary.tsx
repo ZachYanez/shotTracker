@@ -4,13 +4,17 @@ import { StyleSheet, Text, View } from 'react-native';
 import { PrimaryButton } from '@/components/common/PrimaryButton';
 import { ScreenShell } from '@/components/common/ScreenShell';
 import { SectionCard } from '@/components/common/SectionCard';
+import { formatCalibrationStatusLabel } from '@/features/session/calibrationReadiness';
 import { SessionStatRow } from '@/components/sessions/SessionStatRow';
 import { palette, spacing, typography } from '@/lib/theme';
 import { useSessionStore } from '@/stores/sessionStore';
 
 export default function SessionSummaryScreen() {
   const router = useRouter();
-  const summary = useSessionStore((state) => state.lastSummary);
+  const { savedCalibrationReadiness, summary } = useSessionStore((state) => ({
+    savedCalibrationReadiness: state.savedCalibrationReadiness,
+    summary: state.lastSummary,
+  }));
 
   return (
     <ScreenShell title="Session Complete" subtitle="Nice work out there.">
@@ -30,8 +34,8 @@ export default function SessionSummaryScreen() {
                 <Text style={styles.heroLabel}>FG%</Text>
               </View>
               <View style={styles.heroCard}>
-                <Text style={styles.heroValue}>{summary.currentStreak}</Text>
-                <Text style={styles.heroLabel}>Streak</Text>
+                <Text style={styles.heroValue}>{summary.bestStreak}</Text>
+                <Text style={styles.heroLabel}>Best streak</Text>
               </View>
               <View style={styles.heroCard}>
                 <Text style={styles.heroValue}>{Math.round(summary.durationSeconds / 60)}m</Text>
@@ -39,7 +43,14 @@ export default function SessionSummaryScreen() {
               </View>
             </View>
             <SessionStatRow label="Status" value={summary.syncState === 'synced' ? 'Saved' : 'Saved locally'} />
+            <SessionStatRow label="Calibration" value={formatCalibrationStatusLabel(savedCalibrationReadiness)} />
           </SectionCard>
+
+          {savedCalibrationReadiness ? (
+            <SectionCard eyebrow="Setup" title="Calibration handoff">
+              <Text style={styles.copy}>{savedCalibrationReadiness.recommendation}</Text>
+            </SectionCard>
+          ) : null}
 
           <View style={styles.actions}>
             <PrimaryButton onPress={() => router.push('/(tabs)/history')}>View History</PrimaryButton>

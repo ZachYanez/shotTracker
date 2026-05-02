@@ -3,8 +3,9 @@ import { useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { HoopOverlay } from '@/components/camera/HoopOverlay';
+import { CalibrationReadinessCard } from '@/components/camera/CalibrationReadinessCard';
 import { LiveStatsHUD } from '@/components/camera/LiveStatsHUD';
+import { SessionCameraView } from '@/components/camera/SessionCameraView';
 import { PrimaryButton } from '@/components/common/PrimaryButton';
 import { ScreenShell } from '@/components/common/ScreenShell';
 import { SectionCard } from '@/components/common/SectionCard';
@@ -17,16 +18,36 @@ export default function LiveSessionScreen() {
   const router = useRouter();
   const addSession = useHistoryStore((state) => state.addSession);
   const processorStatus = getBasketballProcessorStatus();
-  const { beginSession, finishSession, hoopROI, isRunning, liveStats, recordMockShot } = useSessionStore(
-    (state) => ({
+  const {
+    beginSession,
+    calibrationReadiness,
+    finishSession,
+    hoopROI,
+    ingestNativeFrameResult,
+    isRunning,
+    latestFrameResult,
+    liveStats,
+    recordMockShot,
+    recordProcessorWarning,
+    savedCalibrationReadiness,
+    sessionConfig,
+    shooterSeed,
+  } =
+    useSessionStore((state) => ({
       beginSession: state.beginSession,
+      calibrationReadiness: state.calibrationReadiness,
       finishSession: state.finishSession,
       hoopROI: state.hoopROI,
+      ingestNativeFrameResult: state.ingestNativeFrameResult,
       isRunning: state.isRunning,
+      latestFrameResult: state.latestFrameResult,
       liveStats: state.liveStats,
       recordMockShot: state.recordMockShot,
-    }),
-  );
+      recordProcessorWarning: state.recordProcessorWarning,
+      savedCalibrationReadiness: state.savedCalibrationReadiness,
+      sessionConfig: state.sessionConfig,
+      shooterSeed: state.shooterSeed,
+    }));
 
   useEffect(() => {
     beginSession();
@@ -37,22 +58,22 @@ export default function LiveSessionScreen() {
       title="Live Session"
       subtitle={
         processorStatus.available
-          ? 'The native processor is ready to drive live attempt and make detection.'
+          ? 'Native pose, release, and early trajectory-based outcome detection are live. Keep manual scoring available as an override while the model is being tuned.'
           : 'The native processor is missing, so this screen is running in demo mode with mock shot controls.'
       }>
       <SectionCard eyebrow="Camera" title={isRunning ? 'Session running' : 'Session stopped'}>
-        <View style={styles.preview}>
-          <View style={styles.previewTopBar}>
-            <View style={styles.livePill}>
-              <View style={styles.liveDot} />
-              <Text style={styles.livePillText}>Live session</Text>
-            </View>
-            <Text style={styles.previewMeta}>{processorStatus.modeLabel}</Text>
-          </View>
-          <HoopOverlay hoopROI={hoopROI} />
-          <View style={styles.hud}>
-            <LiveStatsHUD stats={liveStats} />
-          </View>
+        <SessionCameraView
+          hoopROI={hoopROI}
+          latestFrameResult={latestFrameResult}
+          mode="live"
+          onFrameResult={ingestNativeFrameResult}
+          processorAvailable={processorStatus.available}
+          sessionConfig={sessionConfig}
+          shooterSeed={shooterSeed}
+          style={styles.preview}
+        />
+        <View style={styles.hud}>
+          <LiveStatsHUD stats={liveStats} />
         </View>
         {!processorStatus.available ? (
           <View style={styles.noticeCard}>
@@ -62,18 +83,41 @@ export default function LiveSessionScreen() {
         ) : null}
       </SectionCard>
 
-      <SectionCard eyebrow="Controls" title={processorStatus.available ? 'Session controls' : 'Simulation controls'}>
+      {savedCalibrationReadiness ? (
+        <SectionCard eyebrow="Calibration" title="Session lock">
+          <CalibrationReadinessCard
+            readiness={processorStatus.available ? calibrationReadiness : savedCalibrationReadiness}
+            title={processorStatus.available ? 'Current tracking lock' : 'Saved setup'}
+          />
+        </SectionCard>
+      ) : null}
+
+      <SectionCard eyebrow="Controls" title={processorStatus.available ? 'Manual override' : 'Simulation controls'}>
         <View style={styles.controls}>
-          <PrimaryButton onPress={() => recordMockShot(true)}>Record Make</PrimaryButton>
-          <PrimaryButton onPress={() => recordMockShot(false)} variant="secondary">
-            Record Miss
-          </PrimaryButton>
-          <PrimaryButton onPress={() => recordMockShot(false, 'hoop_lost')} variant="secondary">
-            Trigger Hoop Lost
-          </PrimaryButton>
+          {processorStatus.available ? (
+            <View style={styles.noticeCard}>
+              <Text style={styles.noticeTitle}>Hybrid testing mode</Text>
+              <Text style={styles.noticeBody}>
+                Native Vision tracking now writes shooter lock, release events, and first-pass attempt and make/miss events. Use the controls below to override edge cases while the detector is still being tuned.
+              </Text>
+            </View>
+          ) : null}
+          <>
+            <PrimaryButton onPress={() => recordMockShot(true)}>Record Make</PrimaryButton>
+            <PrimaryButton onPress={() => recordMockShot(false)} variant="secondary">
+              Record Miss
+            </PrimaryButton>
+          </>
+          {!processorStatus.available ? (
+            <>
+              <PrimaryButton onPress={() => recordProcessorWarning('hoop_lost')} variant="secondary">
+                Trigger Hoop Lost
+              </PrimaryButton>
+            </>
+          ) : null}
           <PrimaryButton
-            onPress={() => {
-              const summary = finishSession();
+            onPress={async () => {
+              const summary = await finishSession();
               addSession(summary);
               router.replace('/session/summary');
             }}>
@@ -87,59 +131,10 @@ export default function LiveSessionScreen() {
 
 const styles = StyleSheet.create({
   preview: {
-    backgroundColor: palette.backgroundElevated,
-    borderColor: palette.border,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    height: 320,
-    justifyContent: 'flex-end',
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  previewTopBar: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    left: spacing.md,
-    position: 'absolute',
-    right: spacing.md,
-    top: spacing.md,
-    zIndex: 2,
-  },
-  livePill: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(5,5,5,0.72)',
-    borderRadius: radius.pill,
-    flexDirection: 'row',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
-  liveDot: {
-    backgroundColor: palette.accent,
-    borderRadius: radius.pill,
-    height: 8,
-    width: 8,
-  },
-  livePillText: {
-    color: palette.text,
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  previewMeta: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderRadius: radius.pill,
-    color: palette.textMuted,
-    fontSize: 12,
-    fontWeight: '700',
-    overflow: 'hidden',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    textTransform: 'uppercase',
+    height: 448,
   },
   hud: {
-    padding: spacing.md,
+    marginTop: spacing.sm,
   },
   controls: {
     gap: spacing.sm,

@@ -8,5 +8,5 @@ yarn-error.*
 .DS_Store
 coverage
 *.log
-android
-ios
+/android
+/ios

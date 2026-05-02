@@ -23,10 +23,10 @@ export function getBasketballProcessorStatus() {
   if (nativeProcessor) {
     return {
       available: true,
-      modeLabel: 'Native detection',
+      modeLabel: 'Native tracking',
       shortLabel: 'Active',
       description:
-        'Real shot detection is backed by the registered native VisionCamera frame processor.',
+        'The registered native VisionCamera frame processor is active for pose tracking, shooter seeding, release detection, and first-pass trajectory-based shot outcomes.',
     };
   }
 

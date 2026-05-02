@@ -34,6 +34,15 @@ export default function NewSessionScreen() {
               <Text style={styles.stepBody}>You'll mark the hoop location so every shot counts.</Text>
             </View>
           </View>
+          <View style={styles.step}>
+            <View style={styles.stepNumber}>
+              <Text style={styles.stepNumberText}>3</Text>
+            </View>
+            <View style={styles.stepContent}>
+              <Text style={styles.stepTitle}>Scan hoopers</Text>
+              <Text style={styles.stepBody}>Step into frame and scan what each person is wearing before live tracking.</Text>
+            </View>
+          </View>
         </View>
         <PrimaryButton onPress={() => router.push('/session/calibrate')}>Continue</PrimaryButton>
       </SectionCard>

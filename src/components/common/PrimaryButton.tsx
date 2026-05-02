@@ -26,7 +26,9 @@ export function PrimaryButton({
         pressed && !disabled ? styles.pressed : null,
         disabled ? styles.disabled : null,
       ]}>
-      <Text style={[styles.label, variant === 'secondary' ? styles.secondaryLabel : null]}>{children}</Text>
+      <Text style={[styles.label, variant === 'secondary' ? styles.secondaryLabel : null]}>
+        {children}
+      </Text>
     </Pressable>
   );
 }
@@ -42,24 +44,25 @@ const styles = StyleSheet.create({
   },
   primary: {
     backgroundColor: palette.accent,
+    // Omnidirectional neon glow — the "press START" energy
     ...shadow.button,
   },
   secondary: {
-    backgroundColor: 'transparent',
+    backgroundColor: palette.surfaceMuted,
     borderColor: palette.borderStrong,
     borderWidth: 1,
   },
   pressed: {
-    opacity: 0.85,
+    opacity: 0.82,
     transform: [{ scale: 0.97 }],
   },
   disabled: {
-    opacity: 0.4,
+    opacity: 0.35,
   },
   label: {
     color: '#ffffff',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
     letterSpacing: -0.2,
   },
   secondaryLabel: {

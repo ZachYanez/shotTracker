@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 
+import { listLocalSessions, seedLocalSessionsIfEmpty } from '@/lib/db/localSessions';
 import type { SessionSummary } from '@/types/session';
 
 const seedSessions: SessionSummary[] = [
@@ -49,13 +50,44 @@ const seedSessions: SessionSummary[] = [
 
 type HistoryStore = {
   sessions: SessionSummary[];
+  isHydrated: boolean;
+  hydrate: () => Promise<void>;
   addSession: (session: SessionSummary) => void;
 };
 
+function sortSessions(sessions: SessionSummary[]) {
+  return [...sessions].sort(
+    (left, right) => new Date(right.startedAt).getTime() - new Date(left.startedAt).getTime(),
+  );
+}
+
+function mergeSession(sessions: SessionSummary[], incoming: SessionSummary) {
+  const next = sessions.filter((session) => session.id !== incoming.id);
+  return sortSessions([incoming, ...next]);
+}
+
 export const useHistoryStore = create<HistoryStore>((set) => ({
-  sessions: seedSessions,
+  sessions: [],
+  isHydrated: false,
+  hydrate: async () => {
+    try {
+      await seedLocalSessionsIfEmpty(seedSessions);
+      const sessions = await listLocalSessions();
+
+      set({
+        sessions,
+        isHydrated: true,
+      });
+    } catch (error) {
+      console.warn('History hydration failed', error);
+      set({
+        sessions: sortSessions(seedSessions),
+        isHydrated: true,
+      });
+    }
+  },
   addSession: (session) =>
     set((state) => ({
-      sessions: [session, ...state.sessions],
+      sessions: mergeSession(state.sessions, session),
     })),
 }));

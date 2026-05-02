@@ -49,7 +49,10 @@ export default function TodayScreen() {
             label="Result"
             value={`${lastSession.totalMakes}/${lastSession.totalAttempts}`}
           />
-          <SessionStatRow label="Duration" value={`${Math.round(lastSession.durationSeconds / 60)} min`} />
+          <SessionStatRow
+            label="Duration"
+            value={`${Math.round(lastSession.durationSeconds / 60)} min`}
+          />
           <SessionStatRow
             label="Date"
             value={new Date(lastSession.startedAt).toLocaleDateString('en-US', {
@@ -72,9 +75,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.xs,
   },
+  // Glass metric tile — sits inside the glass card for a two-layer depth effect
   metric: {
-    backgroundColor: palette.surfaceSoft,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderColor: 'rgba(255, 255, 255, 0.07)',
     borderRadius: 14,
+    borderWidth: 1,
     flex: 1,
     gap: spacing.xxs,
     padding: spacing.md,

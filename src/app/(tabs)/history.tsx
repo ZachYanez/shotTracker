@@ -54,9 +54,12 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.xs,
   },
+  // Glass metric tile — two-layer depth inside the parent glass card
   metric: {
-    backgroundColor: palette.surfaceSoft,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderColor: 'rgba(255, 255, 255, 0.07)',
     borderRadius: 14,
+    borderWidth: 1,
     flex: 1,
     minWidth: '46%',
     padding: spacing.md,

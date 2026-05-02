@@ -1,124 +1,128 @@
+import { useEffect } from 'react';
+
 import { useRouter } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { HoopOverlay } from '@/components/camera/HoopOverlay';
+import { CalibrationReadinessCard } from '@/components/camera/CalibrationReadinessCard';
+import { OutfitScanPanel } from '@/components/camera/OutfitScanPanel';
+import { SessionCameraView } from '@/components/camera/SessionCameraView';
 import { ShooterGuide } from '@/components/camera/ShooterGuide';
 import { PrimaryButton } from '@/components/common/PrimaryButton';
 import { ScreenShell } from '@/components/common/ScreenShell';
 import { SectionCard } from '@/components/common/SectionCard';
 import { calibrationChecklist } from '@/features/session/sessionConfig';
-import { palette, radius, spacing } from '@/lib/theme';
+import { getBasketballProcessorStatus } from '@/lib/camera/frameProcessor';
+import { palette, spacing, typography } from '@/lib/theme';
 import { useSessionStore } from '@/stores/sessionStore';
 
 export default function CalibrateScreen() {
   const router = useRouter();
-  const hoopROI = useSessionStore((state) => state.hoopROI);
-  const shooterSeed = useSessionStore((state) => state.shooterSeed);
-  const setCalibration = useSessionStore((state) => state.setCalibration);
+  const processorStatus = getBasketballProcessorStatus();
+  const {
+    calibrationReadiness,
+    hoopROI,
+    ingestNativeFrameResult,
+    latestFrameResult,
+    resetCalibrationPreview,
+    scanHooperFromLatestFrame,
+    sessionConfig,
+    setCalibration,
+    shooterSeed,
+    clearScannedHoopers,
+  } =
+    useSessionStore((state) => ({
+      calibrationReadiness: state.calibrationReadiness,
+      clearScannedHoopers: state.clearScannedHoopers,
+      hoopROI: state.hoopROI,
+      ingestNativeFrameResult: state.ingestNativeFrameResult,
+      latestFrameResult: state.latestFrameResult,
+      resetCalibrationPreview: state.resetCalibrationPreview,
+      scanHooperFromLatestFrame: state.scanHooperFromLatestFrame,
+      sessionConfig: state.sessionConfig,
+      setCalibration: state.setCalibration,
+      shooterSeed: state.shooterSeed,
+    }));
+  const canStartLive = processorStatus.available && calibrationReadiness.readyToStart;
+
+  useEffect(() => {
+    resetCalibrationPreview();
+  }, [resetCalibrationPreview]);
+
+  const continueToLive = (manual = false) => {
+    setCalibration({ hoopROI, shooterSeed, manual });
+    router.push('/session/live');
+  };
 
   return (
     <ScreenShell
       title="Calibrate"
-      subtitle="Lock the shooter, confirm the hoop box, and store the first calibration packet.">
+      subtitle="Lock the rim, settle the scene, and stage one shooter before the live session starts.">
       <SectionCard eyebrow="Setup" title="Shooter guidance">
         <ShooterGuide steps={calibrationChecklist} />
       </SectionCard>
 
-      <SectionCard eyebrow="Preview" title="Reference framing">
-        <View style={styles.preview}>
-          <View style={styles.previewHeader}>
-            <Text style={styles.previewChip}>Tripod setup</Text>
-            <Text style={styles.previewChip}>Hoop locked</Text>
+      <SectionCard eyebrow="Preview" title="Live framing">
+        <SessionCameraView
+          hoopROI={hoopROI}
+          latestFrameResult={latestFrameResult}
+          mode="calibration"
+          onFrameResult={ingestNativeFrameResult}
+          processorAvailable={processorStatus.available}
+          sessionConfig={sessionConfig}
+          shooterSeed={shooterSeed}
+        />
+        <OutfitScanPanel
+          latestFrameResult={latestFrameResult}
+          onClear={clearScannedHoopers}
+          onScan={scanHooperFromLatestFrame}
+          shooterSeed={shooterSeed}
+        />
+        {processorStatus.available ? (
+          <>
+            <CalibrationReadinessCard readiness={calibrationReadiness} />
+            <View style={styles.actions}>
+              <PrimaryButton disabled={!canStartLive} onPress={() => continueToLive(false)}>
+                {canStartLive ? 'Start Live Session' : 'Waiting For Stable Lock'}
+              </PrimaryButton>
+              {!canStartLive ? (
+                <PrimaryButton onPress={() => continueToLive(true)} variant="secondary">
+                  Use Rough Framing Instead
+                </PrimaryButton>
+              ) : null}
+            </View>
+          </>
+        ) : (
+          <View style={styles.fallbackCard}>
+            <Text style={styles.fallbackTitle}>Native tracking not loaded</Text>
+            <Text style={styles.fallbackBody}>
+              {processorStatus.description} You can still save this framing and continue in manual demo mode.
+            </Text>
+            <PrimaryButton onPress={() => continueToLive(true)}>Continue With Rough Framing</PrimaryButton>
           </View>
-          <View style={styles.shooterBox}>
-            <Text style={styles.shooterLabel}>Shooter zone</Text>
-          </View>
-          <HoopOverlay hoopROI={hoopROI} />
-          <View style={styles.previewFooter}>
-            <Text style={styles.footerTitle}>Calibration target</Text>
-            <Text style={styles.footerBody}>Stand centered in the shooter zone and keep the rim fully visible.</Text>
-          </View>
-        </View>
-        <PrimaryButton
-          onPress={() => {
-            setCalibration({ hoopROI, shooterSeed });
-            router.push('/session/live');
-          }}>
-          Use This Calibration
-        </PrimaryButton>
+        )}
       </SectionCard>
     </ScreenShell>
   );
 }
 
 const styles = StyleSheet.create({
-  preview: {
-    backgroundColor: palette.backgroundElevated,
-    borderColor: palette.border,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    height: 260,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  previewHeader: {
-    flexDirection: 'row',
+  actions: {
     gap: spacing.sm,
-    left: spacing.md,
-    position: 'absolute',
-    top: spacing.md,
-    zIndex: 2,
   },
-  previewChip: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderRadius: radius.pill,
-    color: palette.text,
-    fontSize: 12,
-    fontWeight: '700',
-    overflow: 'hidden',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
-  shooterBox: {
-    borderColor: 'rgba(255,255,255,0.22)',
-    borderRadius: radius.md,
-    borderStyle: 'dashed',
+  fallbackCard: {
+    backgroundColor: 'rgba(255, 189, 82, 0.10)',
+    borderColor: 'rgba(255, 189, 82, 0.18)',
+    borderRadius: 18,
     borderWidth: 1,
-    bottom: 56,
-    left: '18%',
-    position: 'absolute',
-    top: '32%',
-    width: '34%',
+    gap: spacing.sm,
+    padding: spacing.lg,
   },
-  shooterLabel: {
-    backgroundColor: 'rgba(255,255,255,0.10)',
-    color: palette.text,
-    fontSize: 11,
-    fontWeight: '700',
-    left: 8,
-    overflow: 'hidden',
-    paddingHorizontal: 6,
-    paddingVertical: 4,
-    position: 'absolute',
-    top: -12,
+  fallbackTitle: {
+    color: palette.warning,
+    ...typography.headline,
   },
-  previewFooter: {
-    backgroundColor: 'rgba(5,5,5,0.78)',
-    bottom: 0,
-    left: 0,
-    padding: spacing.md,
-    position: 'absolute',
-    right: 0,
-  },
-  footerTitle: {
-    color: palette.text,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  footerBody: {
+  fallbackBody: {
     color: palette.textMuted,
-    fontSize: 13,
-    lineHeight: 20,
-    marginTop: spacing.xs,
+    ...typography.body,
   },
 });

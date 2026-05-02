@@ -12,6 +12,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     typedRoutes: true,
   },
   ios: {
+    bundleIdentifier: 'com.shottracker.app',
     supportsTablet: true,
   },
   android: {
@@ -24,6 +25,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   plugins: [
     'expo-router',
+    'expo-font',
+    'expo-secure-store',
+    'expo-sqlite',
     [
       'react-native-vision-camera',
       {

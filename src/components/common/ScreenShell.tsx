@@ -9,9 +9,22 @@ type ScreenShellProps = PropsWithChildren<{
   headerRight?: ReactNode;
 }>;
 
+// Subtle horizontal grid lines — a barely-there retro CRT hint
+// Fixed behind scroll content so they don't move
+function ScanlineGrid() {
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      {[8, 17, 26, 35, 44, 53, 62, 71, 80, 89].map((pct) => (
+        <View key={pct} style={[styles.scanline, { top: `${pct}%` as unknown as number }]} />
+      ))}
+    </View>
+  );
+}
+
 export function ScreenShell({ title, subtitle, headerRight, children }: ScreenShellProps) {
   return (
     <SafeAreaView style={styles.safeArea}>
+      <ScanlineGrid />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View style={styles.headerCopy}>
@@ -30,6 +43,13 @@ const styles = StyleSheet.create({
   safeArea: {
     backgroundColor: palette.background,
     flex: 1,
+  },
+  scanline: {
+    backgroundColor: 'rgba(255, 255, 255, 0.022)',
+    height: 1,
+    left: 0,
+    position: 'absolute',
+    right: 0,
   },
   content: {
     gap: spacing.lg,

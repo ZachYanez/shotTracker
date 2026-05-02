@@ -48,4 +48,30 @@ export const migrations: Migration[] = [
       'CREATE INDEX IF NOT EXISTS idx_local_shot_events_sync_state ON local_shot_events(sync_state);',
     ],
   },
+  {
+    version: 2,
+    statements: [
+      `CREATE TABLE IF NOT EXISTS local_native_frame_samples (
+        id TEXT PRIMARY KEY NOT NULL,
+        session_id TEXT NOT NULL,
+        timestamp_ms INTEGER NOT NULL,
+        trigger TEXT NOT NULL,
+        event_types TEXT NOT NULL DEFAULT '[]',
+        warnings TEXT NOT NULL DEFAULT '[]',
+        shooter_box TEXT,
+        shooter_confidence REAL,
+        shooter_tracked INTEGER NOT NULL DEFAULT 0,
+        ball_box TEXT,
+        ball_velocity TEXT,
+        ball_confidence REAL,
+        ball_detected INTEGER NOT NULL DEFAULT 0,
+        rim_box TEXT,
+        rim_confidence REAL,
+        rim_detected INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (session_id) REFERENCES local_sessions(id) ON DELETE CASCADE
+      );`,
+      'CREATE INDEX IF NOT EXISTS idx_local_native_frame_samples_session_id ON local_native_frame_samples(session_id, timestamp_ms ASC);',
+    ],
+  },
 ];

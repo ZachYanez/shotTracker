@@ -1,4 +1,4 @@
-import type { SessionStatus, ShotEventType, SyncState } from './session';
+import type { NativeWarning, SessionStatus, ShotEventType, SyncState } from './session';
 
 export type ProfileRow = {
   id: string;
@@ -68,4 +68,24 @@ export type LocalShotEventRow = {
   clip_path_local: string | null;
   clip_path_remote: string | null;
   sync_state: SyncState;
+};
+
+export type LocalNativeFrameSampleRow = {
+  id: string;
+  session_id: string;
+  timestamp_ms: number;
+  trigger: 'event' | 'warning';
+  event_types: string;
+  warnings: string;
+  shooter_box: string | null;
+  shooter_confidence: number | null;
+  shooter_tracked: 0 | 1;
+  ball_box: string | null;
+  ball_velocity: string | null;
+  ball_confidence: number | null;
+  ball_detected: 0 | 1;
+  rim_box: string | null;
+  rim_confidence: number | null;
+  rim_detected: 0 | 1;
+  created_at: string;
 };

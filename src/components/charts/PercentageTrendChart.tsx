@@ -7,8 +7,25 @@ type PercentageTrendChartProps = {
   points: TrendPoint[];
 };
 
+// Horizontal grid lines in the chart background — retro graph paper feel
+function ChartGrid() {
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      {[25, 50, 75].map((pct) => (
+        <View
+          key={pct}
+          style={[
+            styles.gridLine,
+            { bottom: `${pct}%` as unknown as number },
+          ]}
+        />
+      ))}
+    </View>
+  );
+}
+
 export function PercentageTrendChart({ points }: PercentageTrendChartProps) {
-  const peak = Math.max(...points.map((point) => point.fgPct), 1);
+  const peak = Math.max(...points.map((p) => p.fgPct), 1);
 
   if (points.length === 0) {
     return (
@@ -20,19 +37,21 @@ export function PercentageTrendChart({ points }: PercentageTrendChartProps) {
 
   return (
     <View style={styles.container}>
+      <ChartGrid />
       {points.map((point) => {
         const isPeak = point.fgPct === peak;
+        const fillPct = Math.max((point.fgPct / peak) * 100, 8);
         return (
           <View key={point.date} style={styles.column}>
-            <Text style={[styles.value, isPeak && styles.valuePeak]}>
+            <Text style={[styles.value, isPeak ? styles.valuePeak : styles.valueDim]}>
               {point.fgPct.toFixed(0)}%
             </Text>
             <View style={styles.barTrack}>
               <View
                 style={[
                   styles.bar,
-                  isPeak ? styles.barPeak : null,
-                  { height: `${Math.max((point.fgPct / peak) * 100, 8)}%` },
+                  isPeak ? styles.barPeak : styles.barDefault,
+                  { height: `${fillPct}%` as unknown as number },
                 ]}
               />
             </View>
@@ -49,15 +68,16 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     flexDirection: 'row',
     gap: spacing.xs,
-    minHeight: 160,
+    minHeight: 168,
   },
   column: {
     alignItems: 'center',
     flex: 1,
     gap: spacing.xxs,
   },
+  // Flat bottom of track so bars feel "grounded" on the grid
   barTrack: {
-    backgroundColor: palette.surfaceSoft,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
     borderRadius: radius.sm,
     flex: 1,
     justifyContent: 'flex-end',
@@ -65,25 +85,46 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   bar: {
-    backgroundColor: palette.surfaceMuted,
-    borderRadius: radius.sm,
+    // Angular tops — only bottom corners rounded, like retro pixel bars
+    borderTopLeftRadius: 3,
+    borderTopRightRadius: 3,
     minHeight: 6,
     width: '100%',
   },
+  barDefault: {
+    backgroundColor: palette.surfaceMuted,
+  },
   barPeak: {
     backgroundColor: palette.accent,
+    // Neon glow on the peak bar
+    shadowColor: palette.accent,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 8,
+    elevation: 6,
   },
   value: {
-    color: palette.textSubtle,
     ...typography.caption,
   },
   valuePeak: {
     color: palette.accent,
   },
+  valueDim: {
+    color: palette.textSubtle,
+  },
   label: {
     color: palette.textSubtle,
-    fontSize: 10,
-    fontWeight: '500',
+    fontSize: 9,
+    fontWeight: '600',
+    letterSpacing: 0.4,
+  },
+  // Faint horizontal grid lines inside the chart area
+  gridLine: {
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    height: 1,
+    left: 0,
+    position: 'absolute',
+    right: 0,
   },
   emptyContainer: {
     alignItems: 'center',

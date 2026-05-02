@@ -11,6 +11,9 @@ type SessionCardProps = {
 export function SessionCard({ session, onPress }: SessionCardProps) {
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.card, pressed && styles.pressed]}>
+      {/* Glass top shimmer */}
+      <View style={styles.topShimmer} />
+
       <View style={styles.topRow}>
         <Text style={styles.date}>
           {new Date(session.startedAt).toLocaleDateString('en-US', {
@@ -28,6 +31,7 @@ export function SessionCard({ session, onPress }: SessionCardProps) {
       </View>
 
       <View style={styles.statsRow}>
+        {/* Primary stat — glowing accent tile */}
         <View style={styles.primaryStat}>
           <Text style={styles.pctValue}>{session.fgPct.toFixed(0)}</Text>
           <Text style={styles.pctSymbol}>%</Text>
@@ -49,17 +53,25 @@ export function SessionCard({ session, onPress }: SessionCardProps) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: palette.surface,
-    borderColor: palette.border,
+    backgroundColor: palette.glass,
+    borderColor: palette.glassBorder,
     borderRadius: radius.lg,
     borderWidth: 1,
     gap: spacing.md,
     padding: spacing.lg,
-    ...shadow.subtle,
+    ...shadow.card,
+  },
+  topShimmer: {
+    backgroundColor: palette.glassHighlight,
+    height: 1,
+    left: radius.lg,
+    position: 'absolute',
+    right: radius.lg,
+    top: 0,
   },
   pressed: {
-    opacity: 0.8,
-    transform: [{ scale: 0.98 }],
+    opacity: 0.78,
+    transform: [{ scale: 0.985 }],
   },
   topRow: {
     alignItems: 'center',
@@ -82,12 +94,20 @@ const styles = StyleSheet.create({
   primaryStat: {
     alignItems: 'baseline',
     backgroundColor: palette.accentSoft,
+    borderColor: 'rgba(255, 56, 92, 0.22)',
     borderRadius: radius.md,
+    borderWidth: 1,
     flexDirection: 'row',
     justifyContent: 'center',
     minWidth: 88,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
+    // Subtle red glow on the stat tile
+    shadowColor: palette.accent,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.30,
+    shadowRadius: 12,
+    elevation: 6,
   },
   pctValue: {
     color: palette.accent,

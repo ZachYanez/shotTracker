@@ -1,0 +1,115 @@
+diff --git a/node_modules/expo-image/ios/ImageModule.swift b/node_modules/expo-image/ios/ImageModule.swift
+index 6aa92cc..e7764de 100644
+--- a/node_modules/expo-image/ios/ImageModule.swift
++++ b/node_modules/expo-image/ios/ImageModule.swift
+@@ -134,31 +134,41 @@ public final class ImageModule: Module {
+       }
+ 
+       AsyncFunction("startAnimating") { (view: ImageView) in
+-        if view.isSFSymbolSource {
+-          view.startSymbolAnimation()
+-        } else {
+-          view.sdImageView.startAnimating()
++        MainActor.assumeIsolated {
++          if view.isSFSymbolSource {
++            view.startSymbolAnimation()
++          } else {
++            view.sdImageView.startAnimating()
++          }
+         }
+       }
+ 
+       AsyncFunction("stopAnimating") { (view: ImageView) in
+-        if view.isSFSymbolSource {
+-          view.stopSymbolAnimation()
+-        } else {
+-          view.sdImageView.stopAnimating()
++        MainActor.assumeIsolated {
++          if view.isSFSymbolSource {
++            view.stopSymbolAnimation()
++          } else {
++            view.sdImageView.stopAnimating()
++          }
+         }
+       }
+ 
+       AsyncFunction("lockResourceAsync") { (view: ImageView) in
+-        view.lockResource = true
++        MainActor.assumeIsolated {
++          view.lockResource = true
++        }
+       }
+ 
+       AsyncFunction("unlockResourceAsync") { (view: ImageView) in
+-        view.lockResource = false
++        MainActor.assumeIsolated {
++          view.lockResource = false
++        }
+       }
+ 
+       AsyncFunction("reloadAsync") { (view: ImageView) in
+-        view.reload(force: true)
++        MainActor.assumeIsolated {
++          view.reload(force: true)
++        }
+       }
+ 
+       OnViewDidUpdateProps { view in
+diff --git a/node_modules/expo-image/ios/ImageView.swift b/node_modules/expo-image/ios/ImageView.swift
+index 034b662..2a509ea 100644
+--- a/node_modules/expo-image/ios/ImageView.swift
++++ b/node_modules/expo-image/ios/ImageView.swift
+@@ -4,7 +4,7 @@ internal import SDWebImage
+ import ExpoModulesCore
+ import Symbols
+ #if !os(tvOS)
+-import VisionKit
++@preconcurrency import VisionKit
+ #endif
+ 
+ typealias SDWebImageContext = [SDWebImageContextOption: Any]
+@@ -131,7 +131,9 @@ public final class ImageView: ExpoView {
+ 
+   deinit {
+     // Cancel pending requests when the view is deallocated.
+-    cancelPendingOperation()
++    MainActor.assumeIsolated {
++      cancelPendingOperation()
++    }
+   }
+ 
+   public override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+@@ -656,30 +658,14 @@ public final class ImageView: ExpoView {
+       case .none: sdImageView.addSymbolEffect(.breathe, options: options)
+       }
+     default:
+-      if #available(iOS 26.0, tvOS 26.0, *) {
+-        applySymbolEffectiOS26(effect: effect, scope: scope, options: options)
+-      }
++      break
+     }
+   }
+ 
+   @available(iOS 26.0, tvOS 26.0, *)
+   private func applySymbolEffectiOS26(effect: SFSymbolEffectType, scope: SFSymbolEffectScope?, options: SymbolEffectOptions) {
+-    switch effect {
+-    case .drawOn:
+-      switch scope {
+-      case .byLayer: sdImageView.addSymbolEffect(.drawOn.byLayer, options: options)
+-      case .wholeSymbol: sdImageView.addSymbolEffect(.drawOn.wholeSymbol, options: options)
+-      case .none: sdImageView.addSymbolEffect(.drawOn, options: options)
+-      }
+-    case .drawOff:
+-      switch scope {
+-      case .byLayer: sdImageView.addSymbolEffect(.drawOff.byLayer, options: options)
+-      case .wholeSymbol: sdImageView.addSymbolEffect(.drawOff.wholeSymbol, options: options)
+-      case .none: sdImageView.addSymbolEffect(.drawOff, options: options)
+-      }
+-    default:
+-      break
+-    }
++    // The iOS 26 draw symbol effects are not available in this Xcode SDK.
++    _ = (effect, scope, options)
+   }
+ 
+   func startSymbolAnimation() {

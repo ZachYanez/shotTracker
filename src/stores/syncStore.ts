@@ -1,19 +1,39 @@
 import { create } from 'zustand';
 
+import { getPendingSyncCounts } from '@/lib/db/localSessions';
+
 type SyncStore = {
   pendingSessions: number;
   pendingEvents: number;
   isSyncing: boolean;
   lastSyncedAt?: string;
+  hydrate: () => Promise<void>;
+  refreshCounts: () => Promise<void>;
   markSyncStarted: () => void;
   markSyncFinished: () => void;
 };
 
 export const useSyncStore = create<SyncStore>((set) => ({
-  pendingSessions: 1,
-  pendingEvents: 3,
+  pendingSessions: 0,
+  pendingEvents: 0,
   isSyncing: false,
-  lastSyncedAt: '2026-03-10T19:02:00.000Z',
+  lastSyncedAt: undefined,
+  hydrate: async () => {
+    try {
+      const counts = await getPendingSyncCounts();
+      set(counts);
+    } catch (error) {
+      console.warn('Sync hydration failed', error);
+    }
+  },
+  refreshCounts: async () => {
+    try {
+      const counts = await getPendingSyncCounts();
+      set(counts);
+    } catch (error) {
+      console.warn('Sync counts refresh failed', error);
+    }
+  },
   markSyncStarted: () => set({ isSyncing: true }),
   markSyncFinished: () =>
     set({

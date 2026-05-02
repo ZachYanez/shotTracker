@@ -1,41 +1,60 @@
+// ─── Palette ──────────────────────────────────────────────────────────────────
+// Deep space navy-black base. Not pure black — has a blue DNA that makes glass
+// cards feel like they're floating rather than just being darker rectangles.
 export const palette = {
-  background: '#080808',
-  backgroundElevated: '#0e0e10',
-  surface: '#161618',
-  surfaceMuted: '#1c1c1f',
-  surfaceSoft: '#222226',
-  border: 'rgba(255, 255, 255, 0.06)',
-  borderStrong: 'rgba(255, 255, 255, 0.12)',
-  text: '#f5f5f5',
-  textSecondary: '#c0c0c6',
-  textMuted: '#9a9aa4',
-  textSubtle: '#6e6e78',
+  background: '#07070e',
+  backgroundElevated: '#0d0d1a',
+  surface: '#10101e',
+  surfaceMuted: '#161626',
+  surfaceSoft: '#1c1c2e',
+
+  // Frosted glass — used on cards, overlays, and panels
+  glass: 'rgba(18, 18, 32, 0.82)',
+  glassBorder: 'rgba(255, 255, 255, 0.09)',
+  glassHighlight: 'rgba(255, 255, 255, 0.15)',
+
+  border: 'rgba(255, 255, 255, 0.07)',
+  borderStrong: 'rgba(255, 255, 255, 0.13)',
+
+  text: '#f0f0fa',
+  textSecondary: '#b4b4cc',
+  textMuted: '#8888a4',
+  textSubtle: '#565672',
+
+  // Primary accent — hot red
   accent: '#ff385c',
   accentStrong: '#ff5a5f',
-  accentSoft: 'rgba(255, 56, 92, 0.12)',
-  success: '#34c759',
-  successSoft: 'rgba(52, 199, 89, 0.12)',
+  accentSoft: 'rgba(255, 56, 92, 0.14)',
+  accentGlow: 'rgba(255, 56, 92, 0.42)',
+
+  // Retro neon secondary — used sparingly on HUD highlights and peak values
+  neon: '#00d4ff',
+  neonSoft: 'rgba(0, 212, 255, 0.11)',
+
+  success: '#00d084',
+  successSoft: 'rgba(0, 208, 132, 0.12)',
   warning: '#ffbd52',
   danger: '#ff857d',
 };
 
+// ─── Typography ───────────────────────────────────────────────────────────────
 export const typography = {
   largeTitle: {
     fontSize: 32,
     fontWeight: '800' as const,
-    letterSpacing: -0.8,
+    letterSpacing: -1,
     lineHeight: 38,
   },
   title1: {
     fontSize: 24,
     fontWeight: '700' as const,
-    letterSpacing: -0.4,
+    letterSpacing: -0.5,
     lineHeight: 30,
   },
   title2: {
     fontSize: 20,
     fontWeight: '700' as const,
-    letterSpacing: -0.3,
+    letterSpacing: -0.4,
     lineHeight: 26,
   },
   headline: {
@@ -57,24 +76,27 @@ export const typography = {
   caption: {
     fontSize: 12,
     fontWeight: '600' as const,
-    letterSpacing: 0.4,
+    letterSpacing: 0.3,
     lineHeight: 16,
   },
+  // Uppercase HUD labels — slightly wider tracking for the retro scoreboard feel
   overline: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700' as const,
-    letterSpacing: 0.8,
+    letterSpacing: 1.1,
     lineHeight: 14,
     textTransform: 'uppercase' as const,
   },
+  // Big stat numbers — tight & punchy like a scoreboard
   stat: {
     fontSize: 28,
     fontWeight: '800' as const,
-    letterSpacing: -0.8,
+    letterSpacing: -1,
     lineHeight: 34,
   },
 };
 
+// ─── Spacing ──────────────────────────────────────────────────────────────────
 export const spacing = {
   xxs: 4,
   xs: 8,
@@ -85,6 +107,7 @@ export const spacing = {
   xxl: 48,
 };
 
+// ─── Radius ───────────────────────────────────────────────────────────────────
 export const radius = {
   sm: 12,
   md: 16,
@@ -93,30 +116,33 @@ export const radius = {
   pill: 999,
 };
 
+// ─── Shadows ──────────────────────────────────────────────────────────────────
 export const shadow = {
   card: {
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.38,
+    shadowRadius: 18,
+    elevation: 12,
   },
+  // Omnidirectional neon glow on primary buttons
   button: {
     shadowColor: palette.accent,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.55,
+    shadowRadius: 18,
+    elevation: 10,
   },
   subtle: {
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.22,
+    shadowRadius: 8,
+    elevation: 5,
   },
 };
 
+// ─── Timing ───────────────────────────────────────────────────────────────────
 export const timing = {
   fast: 120,
   normal: 200,

@@ -3,6 +3,15 @@ export type SessionStatus = 'active' | 'completed' | 'abandoned';
 export type SyncState = 'pending' | 'syncing' | 'synced' | 'failed';
 export type ShotEventType = 'attempt' | 'make' | 'miss' | 'release';
 export type NativeWarning = 'hoop_lost' | 'shooter_lost' | 'low_confidence';
+export type CalibrationReadinessStatus =
+  | 'warming'
+  | 'aligning_hoop'
+  | 'staging_shooter'
+  | 'ready'
+  | 'manual_override';
+export type CalibrationReadinessSource = 'native' | 'manual';
+export type CalibrationReadinessStepId = 'hoop' | 'shooter' | 'ready';
+export type CalibrationReadinessStepStatus = 'pending' | 'active' | 'complete';
 
 export type BoundingBox = {
   x: number;
@@ -14,9 +23,20 @@ export type BoundingBox = {
 export type HoopROI = BoundingBox;
 
 export type ShooterSeed = {
+  primaryHooperId?: string;
   torsoColor?: string;
   shirtEmbedding?: number[];
   initialBox?: BoundingBox;
+  trackedHoopers?: HooperProfile[];
+};
+
+export type HooperProfile = {
+  id: string;
+  label: string;
+  scannedAt: string;
+  initialBox?: BoundingBox;
+  torsoColor?: string;
+  confidence?: number;
 };
 
 export type SessionConfig = {
@@ -36,6 +56,9 @@ export type NativeFrameResult = {
     box?: BoundingBox;
     landmarks?: number[];
     confidence: number;
+    appearance?: {
+      torsoColor?: string;
+    };
   };
   ball?: {
     detected: boolean;
@@ -55,6 +78,31 @@ export type NativeFrameResult = {
   warnings: NativeWarning[];
 };
 
+export type NativeFrameTelemetrySample = {
+  id: string;
+  sessionId: string;
+  timestampMs: number;
+  trigger: 'event' | 'warning';
+  eventTypes: ShotEventType[];
+  warnings: NativeWarning[];
+  shooter?: {
+    tracked: boolean;
+    box?: BoundingBox;
+    confidence: number;
+  };
+  ball?: {
+    detected: boolean;
+    box?: BoundingBox;
+    velocity?: { x: number; y: number };
+    confidence: number;
+  };
+  rim?: {
+    detected: boolean;
+    box?: BoundingBox;
+    confidence: number;
+  };
+};
+
 export type ShotEvent = {
   id: string;
   sessionId: string;
@@ -63,6 +111,45 @@ export type ShotEvent = {
   confidence: number;
   clipPathLocal?: string | null;
   clipPathRemote?: string | null;
+};
+
+export type CalibrationReadinessStep = {
+  id: CalibrationReadinessStepId;
+  label: string;
+  status: CalibrationReadinessStepStatus;
+  detail: string;
+};
+
+export type CalibrationReadiness = {
+  status: CalibrationReadinessStatus;
+  source: CalibrationReadinessSource;
+  readyToStart: boolean;
+  readinessScore: number;
+  stableTargetMs: number;
+  rimStableMs: number;
+  shooterStableMs: number;
+  warnings: NativeWarning[];
+  recommendation: string;
+  steps: CalibrationReadinessStep[];
+  snapshotAt?: string;
+};
+
+export type SessionDeviceInfo = {
+  platform?: string;
+  targetFps?: number;
+  processEveryNthFrame?: number;
+  calibrationReadiness?: CalibrationReadiness;
+  [key: string]: unknown;
+};
+
+export type SessionCalibrationPacket = {
+  hoopROI: HoopROI;
+  shooterSeed?: ShooterSeed;
+  deviceInfo?: SessionDeviceInfo;
+};
+
+export type StoredSessionCalibration = SessionCalibrationPacket & {
+  createdAt: string;
 };
 
 export type SessionSummary = {
@@ -81,10 +168,18 @@ export type SessionSummary = {
   syncState: SyncState;
 };
 
+export type SessionDetails = {
+  session: SessionSummary;
+  shotEvents: ShotEvent[];
+  calibration?: StoredSessionCalibration;
+  nativeFrameSamples: NativeFrameTelemetrySample[];
+};
+
 export type LiveSessionStats = {
   attempts: number;
   makes: number;
   fgPct: number;
   currentStreak: number;
+  bestStreak: number;
   warnings: NativeWarning[];
 };
