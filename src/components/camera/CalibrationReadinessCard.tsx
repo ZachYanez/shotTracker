@@ -39,6 +39,10 @@ export function CalibrationReadinessCard({
           <Text style={styles.scoreLabel}>Readiness</Text>
         </View>
         <View style={styles.scoreMetric}>
+          <Text style={styles.scoreValue}>{formatSeconds(readiness.phoneStableMs)}</Text>
+          <Text style={styles.scoreLabel}>Phone hold</Text>
+        </View>
+        <View style={styles.scoreMetric}>
           <Text style={styles.scoreValue}>{formatSeconds(readiness.rimStableMs)}</Text>
           <Text style={styles.scoreLabel}>Hoop hold</Text>
         </View>

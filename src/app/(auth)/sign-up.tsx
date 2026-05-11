@@ -13,6 +13,7 @@ import { useAuthStore } from '@/stores/authStore';
 export default function SignUpScreen() {
   const router = useRouter();
   const signInDemo = useAuthStore((state) => state.signInDemo);
+  const signInSupabase = useAuthStore((state) => state.signInSupabase);
   const [email, setEmail] = useState('player@shottracker.dev');
   const [password, setPassword] = useState('password123');
 
@@ -34,7 +35,15 @@ export default function SignUpScreen() {
       return;
     }
 
-    signInDemo(email);
+    const user = result.data.session?.user;
+
+    if (!user) {
+      Alert.alert('Account created', 'Check your email to confirm your account, then sign in.');
+      router.replace('/sign-in');
+      return;
+    }
+
+    signInSupabase({ id: user.id, email: user.email });
     router.replace('/(tabs)/today');
   };
 

@@ -1,5 +1,6 @@
 import { useRouter } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
+import { useShallow } from 'zustand/react/shallow';
 
 import { PrimaryButton } from '@/components/common/PrimaryButton';
 import { ScreenShell } from '@/components/common/ScreenShell';
@@ -11,13 +12,13 @@ import { useSessionStore } from '@/stores/sessionStore';
 
 export default function SessionSummaryScreen() {
   const router = useRouter();
-  const { savedCalibrationReadiness, summary } = useSessionStore((state) => ({
+  const { savedCalibrationReadiness, summary } = useSessionStore(useShallow((state) => ({
     savedCalibrationReadiness: state.savedCalibrationReadiness,
     summary: state.lastSummary,
-  }));
+  })));
 
   return (
-    <ScreenShell title="Session Complete" subtitle="Nice work out there.">
+    <ScreenShell eyebrow="Session Complete" title="Nice work.">
       {summary ? (
         <>
           <View style={styles.heroSection}>

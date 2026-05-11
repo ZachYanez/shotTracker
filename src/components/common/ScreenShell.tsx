@@ -2,54 +2,39 @@ import type { PropsWithChildren, ReactNode } from 'react';
 import { SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { palette, spacing, typography } from '@/lib/theme';
+import { AppBackground } from './AppBackground';
 
 type ScreenShellProps = PropsWithChildren<{
   title: string;
+  eyebrow?: string;
   subtitle?: string;
   headerRight?: ReactNode;
 }>;
 
-// Subtle horizontal grid lines — a barely-there retro CRT hint
-// Fixed behind scroll content so they don't move
-function ScanlineGrid() {
+export function ScreenShell({ title, eyebrow, subtitle, headerRight, children }: ScreenShellProps) {
   return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-      {[8, 17, 26, 35, 44, 53, 62, 71, 80, 89].map((pct) => (
-        <View key={pct} style={[styles.scanline, { top: `${pct}%` as unknown as number }]} />
-      ))}
-    </View>
-  );
-}
-
-export function ScreenShell({ title, subtitle, headerRight, children }: ScreenShellProps) {
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScanlineGrid />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <View style={styles.headerCopy}>
-            <Text style={styles.title}>{title}</Text>
-            {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+    <AppBackground>
+      <SafeAreaView style={styles.safeArea}>
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <View style={styles.header}>
+            <View style={styles.headerCopy}>
+              {eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}
+              <Text style={styles.title}>{title}</Text>
+              {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+            </View>
+            {headerRight}
           </View>
-          {headerRight}
-        </View>
-        {children}
-      </ScrollView>
-    </SafeAreaView>
+          {children}
+        </ScrollView>
+      </SafeAreaView>
+    </AppBackground>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: {
-    backgroundColor: palette.background,
+    backgroundColor: 'transparent',
     flex: 1,
-  },
-  scanline: {
-    backgroundColor: 'rgba(255, 255, 255, 0.022)',
-    height: 1,
-    left: 0,
-    position: 'absolute',
-    right: 0,
   },
   content: {
     gap: spacing.lg,
@@ -67,9 +52,16 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: spacing.xxs,
   },
+  eyebrow: {
+    color: palette.textSubtle,
+    ...typography.overline,
+  },
   title: {
     color: palette.text,
-    ...typography.largeTitle,
+    fontSize: 34,
+    fontWeight: '800',
+    letterSpacing: -1.2,
+    lineHeight: 38,
   },
   subtitle: {
     color: palette.textMuted,

@@ -13,7 +13,7 @@ export default function HistoryScreen() {
   const snapshot = buildHistorySnapshot(sessions);
 
   return (
-    <ScreenShell title="History" subtitle="Your career numbers.">
+    <ScreenShell eyebrow="Career" title="The body of work.">
       <SectionCard eyebrow="All Time" title="Career stats">
         <View style={styles.metricGrid}>
           <View style={styles.metric}>

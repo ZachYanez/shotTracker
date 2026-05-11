@@ -10,6 +10,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { initializeDatabase } from '@/lib/db/sqlite';
 import { palette, typography } from '@/lib/theme';
+import { useAuthStore } from '@/stores/authStore';
 import { useHistoryStore } from '@/stores/historyStore';
 import { useSyncStore } from '@/stores/syncStore';
 
@@ -22,6 +23,7 @@ export default function RootLayout() {
     void (async () => {
       try {
         await initializeDatabase();
+        await useAuthStore.getState().hydrate();
         await useHistoryStore.getState().hydrate();
         await useSyncStore.getState().hydrate();
       } catch (error) {
@@ -65,7 +67,7 @@ export default function RootLayout() {
         <Stack
           screenOptions={{
             animation: 'slide_from_right',
-            contentStyle: { backgroundColor: palette.background },
+            contentStyle: { backgroundColor: 'transparent' },
             headerStyle: { backgroundColor: 'rgba(7, 7, 14, 0.97)' },
             headerShadowVisible: false,
             headerTintColor: palette.text,
@@ -78,7 +80,7 @@ export default function RootLayout() {
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="(auth)" options={{ headerShown: false }} />
           <Stack.Screen name="session/new" options={{ title: 'New Session' }} />
-          <Stack.Screen name="session/calibrate" options={{ title: 'Calibrate' }} />
+          <Stack.Screen name="session/calibrate" options={{ title: 'Camera Setup' }} />
           <Stack.Screen name="session/live" options={{ title: 'Live Session' }} />
           <Stack.Screen name="session/summary" options={{ title: 'Summary' }} />
           <Stack.Screen name="session-details/[id]" options={{ title: 'Session Detail' }} />

@@ -5,12 +5,13 @@ export type ShotEventType = 'attempt' | 'make' | 'miss' | 'release';
 export type NativeWarning = 'hoop_lost' | 'shooter_lost' | 'low_confidence';
 export type CalibrationReadinessStatus =
   | 'warming'
+  | 'steadying_phone'
   | 'aligning_hoop'
   | 'staging_shooter'
   | 'ready'
   | 'manual_override';
 export type CalibrationReadinessSource = 'native' | 'manual';
-export type CalibrationReadinessStepId = 'hoop' | 'shooter' | 'ready';
+export type CalibrationReadinessStepId = 'phone' | 'hoop' | 'shooter' | 'ready';
 export type CalibrationReadinessStepStatus = 'pending' | 'active' | 'complete';
 
 export type BoundingBox = {
@@ -70,6 +71,7 @@ export type NativeFrameResult = {
     detected: boolean;
     box?: BoundingBox;
     confidence: number;
+    source?: 'detected' | 'refined' | 'reference';
   };
   events: Array<{
     type: ShotEventType;
@@ -128,6 +130,7 @@ export type CalibrationReadiness = {
   stableTargetMs: number;
   rimStableMs: number;
   shooterStableMs: number;
+  phoneStableMs: number;
   warnings: NativeWarning[];
   recommendation: string;
   steps: CalibrationReadinessStep[];

@@ -13,6 +13,7 @@ import { useAuthStore } from '@/stores/authStore';
 export default function SignInScreen() {
   const router = useRouter();
   const signInDemo = useAuthStore((state) => state.signInDemo);
+  const signInSupabase = useAuthStore((state) => state.signInSupabase);
   const [email, setEmail] = useState('player@shottracker.dev');
   const [password, setPassword] = useState('password123');
 
@@ -34,7 +35,14 @@ export default function SignInScreen() {
       return;
     }
 
-    signInDemo(email);
+    const user = result.data.user ?? result.data.session?.user;
+
+    if (!user) {
+      Alert.alert('Sign in failed', 'Supabase did not return a signed-in user.');
+      return;
+    }
+
+    signInSupabase({ id: user.id, email: user.email });
     router.replace('/(tabs)/today');
   };
 

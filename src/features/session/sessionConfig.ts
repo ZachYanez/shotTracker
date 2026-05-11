@@ -11,9 +11,8 @@ export const defaultSessionConfig: SessionConfig = {
 };
 
 export const calibrationChecklist = [
-  'Keep one shooter and one hoop in frame.',
-  'Use a tripod or stable surface.',
-  'Stand inside the shooter zone for 2 to 3 seconds, then scan your outfit.',
-  'For runs with more than one hooper, scan each person one at a time before starting.',
-  'Confirm the hoop framing before you begin.',
+  'Use a tripod, ledge, or stable surface before the scan starts.',
+  'Keep the hoop visible while ShotTracker detects the rim.',
+  'Step into frame so the player tracker can confirm you are visible.',
+  'Live tracking starts automatically once the hoop and player locks complete.',
 ];

@@ -3,11 +3,16 @@ export type SyncSnapshot = {
   pendingEvents: number;
   isSyncing: boolean;
   lastSyncedAt?: string;
+  lastError?: string;
 };
 
 export function describeSyncState(snapshot: SyncSnapshot) {
   if (snapshot.isSyncing) {
     return 'Syncing local sessions to Supabase';
+  }
+
+  if (snapshot.lastError) {
+    return `Sync failed: ${snapshot.lastError}`;
   }
 
   if (snapshot.pendingSessions > 0 || snapshot.pendingEvents > 0) {

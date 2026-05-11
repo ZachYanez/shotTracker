@@ -14,9 +14,12 @@ export type SessionRow = {
   started_at: string;
   ended_at: string | null;
   duration_seconds: number | null;
+  drill_type?: string;
   total_attempts: number;
   total_makes: number;
   fg_pct: number;
+  current_streak?: number;
+  best_streak?: number;
   source: string;
   status: SessionStatus;
   model_version: string | null;
@@ -37,6 +40,7 @@ export type ShotEventRow = {
 
 export type SessionCalibrationRow = {
   id: string;
+  remote_id?: string | null;
   session_id: string;
   hoop_roi: string;
   shooter_seed: string | null;
@@ -46,6 +50,7 @@ export type SessionCalibrationRow = {
 
 export type LocalSessionRow = {
   id: string;
+  remote_id: string | null;
   started_at: string;
   ended_at: string | null;
   duration_seconds: number | null;
@@ -61,6 +66,7 @@ export type LocalSessionRow = {
 
 export type LocalShotEventRow = {
   id: string;
+  remote_id: string | null;
   session_id: string;
   timestamp_ms: number;
   event_type: ShotEventType;

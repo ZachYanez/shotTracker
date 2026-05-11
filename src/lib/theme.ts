@@ -16,10 +16,10 @@ export const palette = {
   border: 'rgba(255, 255, 255, 0.07)',
   borderStrong: 'rgba(255, 255, 255, 0.13)',
 
-  text: '#f0f0fa',
-  textSecondary: '#b4b4cc',
-  textMuted: '#8888a4',
-  textSubtle: '#565672',
+  text: '#f3f3fb',
+  textSecondary: '#f3f3fb',
+  textMuted: '#b4b4cc',
+  textSubtle: '#74748a',
 
   // Primary accent — hot red
   accent: '#ff385c',

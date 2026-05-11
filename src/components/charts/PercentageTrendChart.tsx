@@ -5,6 +5,7 @@ import type { TrendPoint } from '@/types/history';
 
 type PercentageTrendChartProps = {
   points: TrendPoint[];
+  compact?: boolean;
 };
 
 // Horizontal grid lines in the chart background — retro graph paper feel
@@ -24,7 +25,7 @@ function ChartGrid() {
   );
 }
 
-export function PercentageTrendChart({ points }: PercentageTrendChartProps) {
+export function PercentageTrendChart({ points, compact = false }: PercentageTrendChartProps) {
   const peak = Math.max(...points.map((p) => p.fgPct), 1);
 
   if (points.length === 0) {
@@ -36,16 +37,18 @@ export function PercentageTrendChart({ points }: PercentageTrendChartProps) {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, compact && styles.containerCompact]}>
       <ChartGrid />
       {points.map((point) => {
         const isPeak = point.fgPct === peak;
         const fillPct = Math.max((point.fgPct / peak) * 100, 8);
         return (
           <View key={point.date} style={styles.column}>
-            <Text style={[styles.value, isPeak ? styles.valuePeak : styles.valueDim]}>
-              {point.fgPct.toFixed(0)}%
-            </Text>
+            {!compact ? (
+              <Text style={[styles.value, isPeak ? styles.valuePeak : styles.valueDim]}>
+                {point.fgPct.toFixed(0)}%
+              </Text>
+            ) : null}
             <View style={styles.barTrack}>
               <View
                 style={[
@@ -55,7 +58,7 @@ export function PercentageTrendChart({ points }: PercentageTrendChartProps) {
                 ]}
               />
             </View>
-            <Text style={styles.label}>{point.label}</Text>
+            {!compact ? <Text style={styles.label}>{point.label}</Text> : null}
           </View>
         );
       })}
@@ -69,6 +72,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.xs,
     minHeight: 168,
+  },
+  containerCompact: {
+    minHeight: 56,
   },
   column: {
     alignItems: 'center',

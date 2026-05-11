@@ -74,4 +74,24 @@ export const migrations: Migration[] = [
       'CREATE INDEX IF NOT EXISTS idx_local_native_frame_samples_session_id ON local_native_frame_samples(session_id, timestamp_ms ASC);',
     ],
   },
+  {
+    version: 3,
+    statements: [
+      'ALTER TABLE local_sessions ADD COLUMN remote_id TEXT;',
+      'ALTER TABLE local_shot_events ADD COLUMN remote_id TEXT;',
+      'ALTER TABLE local_session_calibrations ADD COLUMN remote_id TEXT;',
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_local_sessions_remote_id ON local_sessions(remote_id) WHERE remote_id IS NOT NULL;',
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_local_shot_events_remote_id ON local_shot_events(remote_id) WHERE remote_id IS NOT NULL;',
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_local_session_calibrations_remote_id ON local_session_calibrations(remote_id) WHERE remote_id IS NOT NULL;',
+    ],
+  },
+  {
+    version: 4,
+    statements: [
+      `CREATE TABLE IF NOT EXISTS local_settings (
+        key TEXT PRIMARY KEY NOT NULL,
+        value TEXT NOT NULL
+      );`,
+    ],
+  },
 ];

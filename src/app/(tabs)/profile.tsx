@@ -1,6 +1,6 @@
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 
 import { PrimaryButton } from '@/components/common/PrimaryButton';
 import { ScreenShell } from '@/components/common/ScreenShell';
@@ -10,19 +10,61 @@ import { describeSyncState } from '@/features/sync/syncQueue';
 import { getBasketballProcessorStatus } from '@/lib/camera/frameProcessor';
 import { palette, spacing, typography } from '@/lib/theme';
 import { useAuthStore } from '@/stores/authStore';
+import { useHistoryStore } from '@/stores/historyStore';
 import { useSyncStore } from '@/stores/syncStore';
 
 export default function ProfileScreen() {
   const router = useRouter();
   const auth = useAuthStore();
   const sync = useSyncStore();
+  const clearAllSessions = useHistoryStore((state) => state.clearAllSessions);
   const processorStatus = getBasketballProcessorStatus();
   const hasSupabaseEnv = Boolean(
     process.env.EXPO_PUBLIC_SUPABASE_URL && process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
   );
+  const handleSyncNow = async () => {
+    try {
+      const result = await sync.syncNow();
+
+      Alert.alert(
+        'Sync complete',
+        `${result.syncedSessions} sessions and ${result.syncedEvents} events synced.`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Sync failed.';
+
+      Alert.alert('Sync failed', message);
+    }
+  };
+
+  const handleResetLifetimeFg = () => {
+    Alert.alert(
+      'Reset lifetime FG%?',
+      'This removes every completed session stored on this device. Career field goal percentage and local history go back to zero until you log new sessions. Sessions already saved in the cloud are not removed from the server.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              try {
+                await clearAllSessions();
+                await sync.refreshCounts();
+                Alert.alert('Done', 'Lifetime FG% on this device has been reset.');
+              } catch (error) {
+                const message = error instanceof Error ? error.message : 'Reset failed.';
+                Alert.alert('Could not reset', message);
+              }
+            })();
+          },
+        },
+      ],
+    );
+  };
 
   return (
-    <ScreenShell title="Profile" subtitle="Your account and app settings.">
+    <ScreenShell eyebrow="Account" title="Profile">
       <SectionCard title={auth.displayName ?? 'Anonymous'}>
         <Text style={styles.copy}>
           {auth.status === 'signed_in'
@@ -41,6 +83,15 @@ export default function ProfileScreen() {
         </PrimaryButton>
       </SectionCard>
 
+      <SectionCard eyebrow="Statistics" title="Lifetime FG%">
+        <Text style={styles.copy}>
+          Career field goal percentage is calculated from completed sessions on this device. Use reset if you want to start that aggregate over.
+        </Text>
+        <PrimaryButton variant="secondary" onPress={handleResetLifetimeFg}>
+          Reset lifetime FG%
+        </PrimaryButton>
+      </SectionCard>
+
       <SectionCard eyebrow="Sync" title="Data status">
         <Text style={styles.copy}>{describeSyncState(sync)}</Text>
         <View style={styles.statusGrid}>
@@ -53,6 +104,9 @@ export default function ProfileScreen() {
             <Text style={styles.statusLabel}>Events</Text>
           </View>
         </View>
+        <PrimaryButton disabled={!hasSupabaseEnv || sync.isSyncing} onPress={() => void handleSyncNow()}>
+          {sync.isSyncing ? 'Syncing' : 'Sync Now'}
+        </PrimaryButton>
       </SectionCard>
 
       <SectionCard eyebrow="System" title="App info">

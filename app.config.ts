@@ -12,7 +12,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     typedRoutes: true,
   },
   ios: {
-    bundleIdentifier: 'com.shottracker.app',
+    bundleIdentifier: 'com.zymgmtco.shottracker',
     supportsTablet: true,
   },
   android: {
@@ -42,5 +42,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   extra: {
     supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL ?? '',
     supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '',
+    eas: {
+      projectId: 'ef9425a3-e240-4dd2-8795-37043d293b1d',
+    },
   },
 });

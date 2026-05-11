@@ -123,6 +123,12 @@ private struct BallTrack {
   let radius: CGFloat
 }
 
+private struct RimDetection {
+  let box: NormalizedBox
+  let confidence: CGFloat
+  let source: String
+}
+
 private struct ProcessorConfig {
   let ballConfidenceThreshold: CGFloat
   let makeConfidenceThreshold: CGFloat
@@ -165,6 +171,12 @@ public class BasketballSessionFrameProcessorPlugin: FrameProcessorPlugin {
   private var shotSawBallAboveRim = false
   private var shotBestBallConfidence: CGFloat = 0
   private var lastOutcomeTimestampMs: Double = 0
+  private var smoothedRimBox: NormalizedBox?
+  private var smoothedRimConfidence: CGFloat = 0
+  /// Recent rim box centers/sizes from strong frames — median fuse to reject single-frame outliers.
+  private var rimTrackBuffer: [(midX: CGFloat, midY: CGFloat, width: CGFloat, height: CGFloat)] = []
+  private let rimTrackMax = 15
+  private let rectangleRequest = VNDetectRectanglesRequest()
 
   private static let landmarkOrder: [VNHumanBodyPoseObservation.JointName] = [
     .nose,
@@ -187,6 +199,12 @@ public class BasketballSessionFrameProcessorPlugin: FrameProcessorPlugin {
   public override init(proxy: VisionCameraProxyHolder, options: [AnyHashable: Any]! = [:]) {
     super.init(proxy: proxy, options: options)
     trajectoryRequest.targetFrameTime = CMTime(value: 1, timescale: 15)
+    rectangleRequest.maximumObservations = 8
+    rectangleRequest.minimumConfidence = 0.42
+    rectangleRequest.minimumAspectRatio = 0.22
+    rectangleRequest.maximumAspectRatio = 2.35
+    rectangleRequest.quadratureTolerance = 28 * .pi / 180
+    rectangleRequest.minimumSize = 0.055
   }
 
   public override func callback(_ frame: Frame, withArguments arguments: [AnyHashable: Any]?) -> Any {
@@ -194,20 +212,22 @@ public class BasketballSessionFrameProcessorPlugin: FrameProcessorPlugin {
     let processorConfig = Self.parseProcessorConfig(from: arguments)
     let shooterSeed = Self.parseDictionary(from: arguments?["shooterSeed"])
     let shooterSeedBox = Self.parseNormalizedBox(from: shooterSeed?["initialBox"])
-    let hoopROI = Self.parseNormalizedBox(from: arguments?["hoopROI"])
+    let referenceHoopROI = Self.parseNormalizedBox(from: arguments?["hoopROI"])
 
     guard let pixelBuffer = CMSampleBufferGetImageBuffer(frame.buffer) else {
       return makeResult(
         timestampMs: timestampMs,
         shooter: nil,
         ballTrack: nil,
-        rim: hoopROI,
+        rim: Self.makeReferenceRimDetection(from: referenceHoopROI),
         events: [],
-        warnings: hoopROI == nil ? [.hoopLost, .shooterLost] : [.shooterLost]
+        warnings: referenceHoopROI == nil ? [.hoopLost, .shooterLost] : [.shooterLost]
       )
     }
 
     let orientation = Self.cgImageOrientation(from: frame.orientation, mirrored: frame.isMirrored)
+    let rimDetection = detectRim(pixelBuffer: pixelBuffer, fallback: referenceHoopROI, orientation: orientation)
+    let rim = rimDetection?.box
     let shooter = detectPrimaryShooter(
       pixelBuffer: pixelBuffer,
       orientation: orientation,
@@ -217,7 +237,7 @@ public class BasketballSessionFrameProcessorPlugin: FrameProcessorPlugin {
     let ballTrack = detectBallTrack(
       pixelBuffer: pixelBuffer,
       orientation: orientation,
-      hoopROI: hoopROI,
+      hoopROI: rim,
       config: processorConfig,
       timestampMs: timestampMs
     )
@@ -225,13 +245,13 @@ public class BasketballSessionFrameProcessorPlugin: FrameProcessorPlugin {
       timestampMs: timestampMs,
       shooter: shooter,
       ballTrack: ballTrack,
-      rim: hoopROI,
+      rim: rim,
       releaseEvents: releaseEvents,
       config: processorConfig
     )
     var warnings: [NativeWarning] = []
 
-    if hoopROI == nil {
+    if rimDetection == nil {
       warnings.append(.hoopLost)
     }
 
@@ -245,7 +265,7 @@ public class BasketballSessionFrameProcessorPlugin: FrameProcessorPlugin {
       timestampMs: timestampMs,
       shooter: shooter,
       ballTrack: ballTrack,
-      rim: hoopROI,
+      rim: rimDetection,
       events: shotEvents,
       warnings: warnings
     )
@@ -507,6 +527,359 @@ public class BasketballSessionFrameProcessorPlugin: FrameProcessorPlugin {
     ]]
   }
 
+  /// Vision uses a bottom-left origin; we use top-left normalized UI space (same as pose landmarks).
+  private static func normalizedBoxFromVisionBoundingBox(_ rect: CGRect) -> NormalizedBox {
+    NormalizedBox(
+      x: rect.origin.x,
+      y: 1 - rect.origin.y - rect.size.height,
+      width: rect.size.width,
+      height: rect.size.height
+    )
+  }
+
+  /// Apple Vision **rectangle detection** (on-device CV) finds rigid quads — often backboard / structural edges.
+  /// We convert the best candidate into a **rim search band** under that geometry, then the per-frame orange scan
+  /// runs inside that band so coordinates track plausible hoop geometry instead of the whole frame.
+  private func visionBackboardRimSearchBand(
+    pixelBuffer: CVPixelBuffer,
+    orientation: CGImagePropertyOrientation,
+    fallback: NormalizedBox?
+  ) -> NormalizedBox? {
+    do {
+      let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation, options: [:])
+      try handler.perform([rectangleRequest])
+    } catch {
+      return nil
+    }
+
+    guard let observations = rectangleRequest.results, !observations.isEmpty else {
+      return nil
+    }
+
+    var scored: [(box: NormalizedBox, score: CGFloat)] = []
+
+    for observation in observations {
+      let box = Self.normalizedBoxFromVisionBoundingBox(observation.boundingBox)
+      let aspect = box.width / max(box.height, 0.001)
+      guard aspect >= 0.28, aspect <= 2.6, box.midY < 0.64 else {
+        continue
+      }
+
+      let conf = CGFloat(observation.confidence)
+      let overlap = fallback.map { max(0.04, box.intersectionOverUnion(with: $0.expanded(xInset: 0.14, yInset: 0.2))) } ?? 0.22
+      let upperBias = 1 - Self.clamp(box.midY / 0.72, min: 0, max: 1)
+      let score = conf * 0.55 + overlap * 0.32 + upperBias * 0.13
+      scored.append((box, score))
+    }
+
+    guard let best = scored.max(by: { $0.score < $1.score }) else {
+      return nil
+    }
+
+    let board = best.box
+    let bandWidth = min(0.95, max(board.width * 1.22, (fallback?.width ?? board.width) * 1.4))
+    let bandHeight = max(0.07, fallback?.height ?? 0.095)
+    let anchorY = min(0.6, max(0.04, board.y + board.height * 0.78))
+    let cx = board.midX
+    var nx = max(0.03, cx - bandWidth * 0.5)
+    nx = min(nx, 0.97 - bandWidth)
+    let ny = max(0.04, anchorY - bandHeight * 0.4)
+    let nh = min(bandHeight, 1 - ny - 0.03)
+    let nw = min(bandWidth, 1 - nx - 0.02)
+
+    return NormalizedBox(x: nx, y: ny, width: nw, height: nh)
+  }
+
+  /// Rolling median over recent strong rim estimates — rejects one-frame false oranges while still updating every frame.
+  private func medianFusedRim(following box: NormalizedBox) -> NormalizedBox {
+    rimTrackBuffer.append((box.midX, box.midY, box.width, box.height))
+
+    if rimTrackBuffer.count > rimTrackMax {
+      rimTrackBuffer.removeFirst()
+    }
+
+    guard rimTrackBuffer.count >= 5 else {
+      return box
+    }
+
+    let xs = rimTrackBuffer.map(\.midX).sorted()
+    let ys = rimTrackBuffer.map(\.midY).sorted()
+    let ws = rimTrackBuffer.map(\.width).sorted()
+    let hs = rimTrackBuffer.map(\.height).sorted()
+    let mid = rimTrackBuffer.count / 2
+    let mx = xs[mid]
+    let my = ys[mid]
+    let mw = ws[mid]
+    let mh = hs[mid]
+    let x = max(0, min(mx - mw * 0.5, 1 - mw - 0.02))
+    let y = max(0, min(my - mh * 0.45, 1 - mh - 0.02))
+
+    return NormalizedBox(x: x, y: y, width: mw, height: mh)
+  }
+
+  /// Rim localization: **Vision rectangle prior** (rigid structure) + **per-frame color/contrast grid** (heuristic),
+  /// **biased toward `hoopROI`**, temporally smoothed and **median-fused** across recent frames. Weak frames ease
+  /// toward the hoop guide. For production-grade accuracy under all lighting, add a **Core ML rim detector** and
+  /// plug it in ahead of or instead of the orange heuristic.
+  private func detectRim(pixelBuffer: CVPixelBuffer, fallback: NormalizedBox?, orientation: CGImagePropertyOrientation)
+    -> RimDetection? {
+    let width = CVPixelBufferGetWidth(pixelBuffer)
+    let height = CVPixelBufferGetHeight(pixelBuffer)
+    let pixelFormat = CVPixelBufferGetPixelFormatType(pixelBuffer)
+
+    guard width > 0, height > 0 else {
+      return Self.makeReferenceRimDetection(from: fallback)
+    }
+
+    let candidateWidth = Self.clamp(fallback?.width ?? 0.18, min: 0.12, max: 0.26)
+    let candidateHeight = Self.clamp(fallback?.height ?? 0.10, min: 0.07, max: 0.16)
+    var bestCandidate: (box: NormalizedBox, score: CGFloat)?
+
+    CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+    defer {
+      CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly)
+    }
+
+    func considerAnchor(normalizedX: CGFloat, normalizedY: CGFloat) {
+      let pixelX = Int((normalizedX * CGFloat(width)).rounded())
+      let pixelY = Int((normalizedY * CGFloat(height)).rounded())
+      let patchScore = Self.rimPatchOrangeScore(
+        pixelBuffer: pixelBuffer,
+        pixelFormat: pixelFormat,
+        width: width,
+        height: height,
+        centerX: pixelX,
+        centerY: pixelY
+      )
+
+      if patchScore < 0.17 {
+        return
+      }
+
+      let box = NormalizedBox(
+        x: Self.clamp(normalizedX - (candidateWidth * 0.5), min: 0, max: 1 - candidateWidth),
+        y: Self.clamp(normalizedY - (candidateHeight * 0.45), min: 0, max: 1 - candidateHeight),
+        width: candidateWidth,
+        height: candidateHeight
+      )
+      let contrastScore = Self.rimContrastScore(
+        pixelBuffer: pixelBuffer,
+        pixelFormat: pixelFormat,
+        width: width,
+        height: height,
+        x: pixelX,
+        y: pixelY
+      )
+      let fallbackScore = fallback.map { box.intersectionOverUnion(with: $0) } ?? 0.38
+      let upperFrameScore = 1 - Self.clamp(abs(normalizedY - 0.24) / 0.34, min: 0, max: 1)
+      let score = (patchScore * 0.52) + (contrastScore * 0.2) + (fallbackScore * 0.22) + (upperFrameScore * 0.06)
+
+      if bestCandidate == nil || score > (bestCandidate?.score ?? 0) {
+        bestCandidate = (box, score)
+      }
+    }
+
+    func scanRect(minNX: CGFloat, maxNX: CGFloat, minNY: CGFloat, maxNY: CGFloat, step: CGFloat) {
+      var ny = minNY
+
+      while ny <= maxNY {
+        var nx = minNX
+
+        while nx <= maxNX {
+          considerAnchor(normalizedX: nx, normalizedY: ny)
+          nx += step
+        }
+
+        ny += step
+      }
+    }
+
+    // Phase 0 — Vision-derived rim strip from rigid rectangles (typically backboard / frame geometry).
+    let visionBand = visionBackboardRimSearchBand(
+      pixelBuffer: pixelBuffer,
+      orientation: orientation,
+      fallback: fallback
+    )
+
+    if let band = visionBand {
+      scanRect(
+        minNX: max(0.04, band.x),
+        maxNX: min(0.96, band.right),
+        minNY: max(0.04, band.y),
+        maxNY: min(0.62, band.bottom),
+        step: 0.01
+      )
+    }
+
+    // Phase 1 — fine search around the app hoop ROI (where the rim is expected).
+    if let fb = fallback {
+      let spanX = max(fb.width * 2.1, 0.24)
+      let spanY = max(fb.height * 2.6, 0.2)
+      let minNX = max(0.05, fb.midX - spanX * 0.5)
+      let maxNX = min(0.95, fb.midX + spanX * 0.5)
+      let minNY = max(0.06, fb.midY - spanY * 0.5)
+      let maxNY = min(0.58, fb.midY + spanY * 0.5)
+      scanRect(minNX: minNX, maxNX: maxNX, minNY: minNY, maxNY: maxNY, step: 0.012)
+    }
+
+    // Phase 2 — coarser full upper-frame pass if the local search is weak or there is no ROI prior.
+    let localPeak = bestCandidate?.score ?? 0
+
+    if localPeak < 0.43 || fallback == nil {
+      scanRect(minNX: 0.08, maxNX: 0.92, minNY: 0.08, maxNY: 0.54, step: 0.025)
+    }
+
+    if let bestCandidate, bestCandidate.score >= 0.38 {
+      let smoothedBox = Self.blendRimBox(current: bestCandidate.box, previous: smoothedRimBox)
+      let fusedBox = medianFusedRim(following: smoothedBox)
+      let confidence = Self.clamp(bestCandidate.score * 1.18, min: 0.45, max: 0.97)
+      smoothedRimBox = fusedBox
+      smoothedRimConfidence = confidence
+
+      return RimDetection(
+        box: fusedBox,
+        confidence: confidence,
+        source: fallback.map { fusedBox.intersectionOverUnion(with: $0) > 0.15 } == true ? "refined" : "detected"
+      )
+    }
+
+    // No strong peak this frame: keep re-evaluating by easing toward the hoop guide instead of freezing a stale box.
+    if let fb = fallback {
+      if let prev = smoothedRimBox {
+        let eased = Self.lerpBox(from: prev, to: fb, t: 0.12)
+        smoothedRimBox = eased
+        smoothedRimConfidence = max(0.38, smoothedRimConfidence * 0.91)
+
+        return RimDetection(box: eased, confidence: smoothedRimConfidence, source: "reference")
+      }
+
+      return Self.makeReferenceRimDetection(from: fb)
+    }
+
+    if let smoothedRimBox {
+      smoothedRimConfidence *= 0.9
+
+      return RimDetection(
+        box: smoothedRimBox,
+        confidence: max(0.35, smoothedRimConfidence),
+        source: "refined"
+      )
+    }
+
+    return Self.makeReferenceRimDetection(from: fallback)
+  }
+
+  private static func makeReferenceRimDetection(from box: NormalizedBox?) -> RimDetection? {
+    guard let box else {
+      return nil
+    }
+
+    return RimDetection(box: box, confidence: 0.58, source: "reference")
+  }
+
+  private static func blendRimBox(current: NormalizedBox, previous: NormalizedBox?) -> NormalizedBox {
+    guard let previous else {
+      return current
+    }
+
+    let iou = current.intersectionOverUnion(with: previous)
+    // Favor the fresh peak when it disagrees with history so wrong locks can correct quickly.
+    let currentWeight: CGFloat = iou > 0.22 ? 0.58 : 0.84
+    let previousWeight = 1 - currentWeight
+
+    return NormalizedBox(
+      x: (current.x * currentWeight) + (previous.x * previousWeight),
+      y: (current.y * currentWeight) + (previous.y * previousWeight),
+      width: (current.width * currentWeight) + (previous.width * previousWeight),
+      height: (current.height * currentWeight) + (previous.height * previousWeight)
+    )
+  }
+
+  private static func lerpBox(from a: NormalizedBox, to b: NormalizedBox, t: CGFloat) -> NormalizedBox {
+    let t = clamp(t, min: 0, max: 1)
+
+    return NormalizedBox(
+      x: a.x + (b.x - a.x) * t,
+      y: a.y + (b.y - a.y) * t,
+      width: a.width + (b.width - a.width) * t,
+      height: a.height + (b.height - a.height) * t
+    )
+  }
+
+  /// Small YUV/BGR patch average of `orangeRimScore` — less jitter than a single pixel.
+  private static func rimPatchOrangeScore(
+    pixelBuffer: CVPixelBuffer,
+    pixelFormat: OSType,
+    width: Int,
+    height: Int,
+    centerX: Int,
+    centerY: Int
+  ) -> CGFloat {
+    var accum: CGFloat = 0
+    var count: CGFloat = 0
+
+    for dy in -2...2 {
+      for dx in -2...2 {
+        let x = centerX + dx
+        let y = centerY + dy
+
+        guard let color = samplePixelColor(pixelBuffer: pixelBuffer, pixelFormat: pixelFormat, x: x, y: y) else {
+          continue
+        }
+
+        accum += orangeRimScore(red: color.red, green: color.green, blue: color.blue)
+        count += 1
+      }
+    }
+
+    return count > 0 ? accum / count : 0
+  }
+
+  private static func orangeRimScore(red: CGFloat, green: CGFloat, blue: CGFloat) -> CGFloat {
+    let warmth = clamp((red - blue) / 180, min: 0, max: 1)
+    let redStrength = clamp((red - 90) / 150, min: 0, max: 1)
+    let greenBand = 1 - clamp(abs(green - (red * 0.55)) / 130, min: 0, max: 1)
+    let bluePenalty = 1 - clamp(blue / max(red, 1), min: 0, max: 1)
+
+    return clamp(
+      (warmth * 0.36) + (redStrength * 0.28) + (greenBand * 0.20) + (bluePenalty * 0.16),
+      min: 0,
+      max: 1
+    )
+  }
+
+  private static func rimContrastScore(
+    pixelBuffer: CVPixelBuffer,
+    pixelFormat: OSType,
+    width: Int,
+    height: Int,
+    x: Int,
+    y: Int
+  ) -> CGFloat {
+    guard let center = samplePixelColor(pixelBuffer: pixelBuffer, pixelFormat: pixelFormat, x: x, y: y) else {
+      return 0
+    }
+
+    let offset = max(4, min(width, height) / 48)
+    let samples = [
+      samplePixelColor(pixelBuffer: pixelBuffer, pixelFormat: pixelFormat, x: x, y: y - offset),
+      samplePixelColor(pixelBuffer: pixelBuffer, pixelFormat: pixelFormat, x: x, y: y + offset),
+      samplePixelColor(pixelBuffer: pixelBuffer, pixelFormat: pixelFormat, x: x - offset, y: y),
+      samplePixelColor(pixelBuffer: pixelBuffer, pixelFormat: pixelFormat, x: x + offset, y: y),
+    ].compactMap { $0 }
+
+    guard !samples.isEmpty else {
+      return 0
+    }
+
+    let centerBrightness = (center.red + center.green + center.blue) / 3
+    let surroundingBrightness = samples
+      .map { ($0.red + $0.green + $0.blue) / 3 }
+      .reduce(CGFloat.zero, +) / CGFloat(samples.count)
+
+    return clamp((centerBrightness - surroundingBrightness) / 80, min: 0, max: 1)
+  }
+
   private func detectBallTrack(
     pixelBuffer: CVPixelBuffer,
     orientation: CGImagePropertyOrientation,
@@ -721,7 +1094,7 @@ public class BasketballSessionFrameProcessorPlugin: FrameProcessorPlugin {
     timestampMs: Double,
     shooter: BodyPoseCandidate?,
     ballTrack: BallTrack?,
-    rim: NormalizedBox?,
+    rim: RimDetection?,
     events: [[String: Any]],
     warnings: [NativeWarning]
   ) -> [String: Any] {
@@ -755,10 +1128,11 @@ public class BasketballSessionFrameProcessorPlugin: FrameProcessorPlugin {
 
     var rimPayload: [String: Any] = [
       "detected": rim != nil,
-      "confidence": Double(rim == nil ? 0 : 0.96),
+      "confidence": Double(rim?.confidence ?? 0),
     ]
     if let rim {
-      rimPayload["box"] = rim.toDictionary()
+      rimPayload["box"] = rim.box.toDictionary()
+      rimPayload["source"] = rim.source
     }
 
     return [

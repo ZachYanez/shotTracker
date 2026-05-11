@@ -1,7 +1,9 @@
+import { useShallow } from 'zustand/react/shallow';
+
 import { useSessionStore } from '@/stores/sessionStore';
 
 export function useBasketballSession() {
-  return useSessionStore((state) => ({
+  return useSessionStore(useShallow((state) => ({
     calibrationReadiness: state.calibrationReadiness,
     liveStats: state.liveStats,
     latestFrameResult: state.latestFrameResult,
@@ -16,5 +18,5 @@ export function useBasketballSession() {
     recordMockShot: state.recordMockShot,
     resetCalibrationPreview: state.resetCalibrationPreview,
     setCalibration: state.setCalibration,
-  }));
+  })));
 }

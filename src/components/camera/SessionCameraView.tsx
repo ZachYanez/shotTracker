@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 
 import { useRunOnJS } from 'react-native-worklets-core';
 import {
   Camera,
   Templates,
   runAtTargetFps,
+  type CameraPosition,
   useCameraDevice,
   useCameraFormat,
   useFrameProcessor,
@@ -17,7 +18,6 @@ import { palette, radius, spacing, typography } from '@/lib/theme';
 import type { HoopROI, NativeFrameResult, SessionConfig, ShooterSeed } from '@/types/session';
 
 import { BoundingBoxOverlay } from './BoundingBoxOverlay';
-import { HoopOverlay } from './HoopOverlay';
 import { PrimaryButton } from '../common/PrimaryButton';
 
 type SessionCameraViewProps = {
@@ -28,18 +28,12 @@ type SessionCameraViewProps = {
   latestFrameResult?: NativeFrameResult;
   processorAvailable: boolean;
   onFrameResult: (result: NativeFrameResult) => void;
+  cameraPosition?: CameraPosition;
+  showOverlays?: boolean;
   style?: StyleProp<ViewStyle>;
 };
 
 type PreviewPhase = 'warming' | 'ready' | 'error';
-
-function formatSignal(confidence?: number) {
-  if (typeof confidence !== 'number') {
-    return 'idle';
-  }
-
-  return `${Math.round(confidence * 100)}%`;
-}
 
 export function SessionCameraView({
   mode,
@@ -49,6 +43,8 @@ export function SessionCameraView({
   latestFrameResult,
   processorAvailable,
   onFrameResult,
+  cameraPosition = 'back',
+  showOverlays = true,
   style,
 }: SessionCameraViewProps) {
   const {
@@ -60,10 +56,14 @@ export function SessionCameraView({
   } = useShotTrackerCameraPermissions();
   const [previewPhase, setPreviewPhase] = useState<PreviewPhase>('warming');
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [hasGrantedCameraAccess, setHasGrantedCameraAccess] = useState(false);
   const isNativeCameraSupported = Platform.OS === 'ios' || Platform.OS === 'android';
-  const device = useCameraDevice('back', {
-    physicalDevices: ['wide-angle-camera'],
-  });
+  const canUseCamera = canStartSession || hasGrantedCameraAccess;
+  const device = useCameraDevice(
+    cameraPosition,
+    cameraPosition === 'back' ? { physicalDevices: ['wide-angle-camera'] } : undefined,
+  );
+  const canRenderCamera = isNativeCameraSupported && canUseCamera && Boolean(device);
   const format = useCameraFormat(device, [{ fps: sessionConfig.targetFps }, ...Templates.FrameProcessing]);
   const runOnFrameResult = useRunOnJS(onFrameResult, [onFrameResult]);
   const processFps = Math.max(1, Math.floor(sessionConfig.targetFps / sessionConfig.processEveryNthFrame));
@@ -87,96 +87,20 @@ export function SessionCameraView({
     [hoopROI, processFps, runOnFrameResult, sessionConfig, shooterSeed],
   );
 
-  const statusItems = useMemo(() => {
-    const rimLocked = latestFrameResult?.rim?.detected ?? false;
-    const shooterLocked = latestFrameResult?.shooter?.tracked ?? false;
-    const ballTracked = latestFrameResult?.ball?.detected ?? false;
-    const scannedHooperCount = shooterSeed?.trackedHoopers?.length ?? 0;
+  const handleRequestCameraAccess = async () => {
+    const result = await requestCameraAccess();
 
-    return [
-      {
-        label: 'Scene',
-        value: previewPhase === 'ready' ? 'Live' : previewPhase === 'error' ? 'Check camera' : 'Warming',
-        active: previewPhase === 'ready',
-      },
-      {
-        label: 'Hoop',
-        value: rimLocked ? 'Locked' : mode === 'calibration' ? 'Aligning' : 'Reference',
-        active: rimLocked,
-      },
-      {
-        label: 'Shooter',
-        value:
-          scannedHooperCount > 0
-            ? `${scannedHooperCount} scanned`
-            : shooterLocked
-              ? mode === 'calibration'
-                ? 'Seeded'
-                : 'Locked'
-              : mode === 'calibration'
-                ? 'Stage zone'
-                : 'Searching',
-        active: shooterLocked || scannedHooperCount > 0,
-      },
-      {
-        label: 'Ball',
-        value: ballTracked ? 'Tracking' : 'Idle',
-        active: ballTracked,
-      },
-    ];
-  }, [latestFrameResult, mode, previewPhase, shooterSeed]);
-
-  const guidance = useMemo(() => {
-    if (!isNativeCameraSupported) {
-      return 'VisionCamera previews are only available on iOS and Android development builds.';
+    if (result) {
+      setHasGrantedCameraAccess(true);
+      setCameraError(null);
+      setPreviewPhase('warming');
     }
+  };
 
-    if (!canStartSession) {
-      return 'Grant camera access to start live alignment and local shot analysis.';
-    }
-
-    if (previewPhase === 'error') {
-      return cameraError ?? 'The camera preview failed to start.';
-    }
-
-    if (previewPhase !== 'ready') {
-      return 'Preparing the wide-angle camera and warming the live preview.';
-    }
-
-    if (!processorAvailable) {
-      return 'Camera preview is live. Rebuild the development app to load the native frame processor; until then, manual scoring stays enabled.';
-    }
-
-    if (mode === 'calibration') {
-      if (!latestFrameResult?.rim?.detected) {
-        return 'Keep the rim inside the guide and hold the phone steady until the scene stabilizes.';
-      }
-
-      if (!latestFrameResult?.shooter?.tracked) {
-        return 'Stage one shooter in the zone and hold still so the live tracker has a clean starting point.';
-      }
-
-      return 'Rim lock and shooter seeding are flowing through the native bridge. Save this framing when the hold timer settles.';
-    }
-
-    if (latestFrameResult?.ball?.detected) {
-      return 'Ball tracking is active. Native attempt and make/miss events can now flow straight into the session store.';
-    }
-
-    if (latestFrameResult?.events.some((event) => event.type === 'release')) {
-      return 'Release motion detected. Hold the frame steady while the trajectory and rim-crossing logic confirms the shot.';
-    }
-
-    return 'Tracking the shooter and watching for release plus rim-path confirmation.';
-  }, [
-    cameraError,
-    canStartSession,
-    isNativeCameraSupported,
-    latestFrameResult,
-    mode,
-    previewPhase,
-    processorAvailable,
-  ]);
+  const rim = latestFrameResult?.rim;
+  /** Native plugin always reports `rim` with a box when using hoopROI fallback (iOS reference). Show it so “locking” is visible, not only after detected/refined. */
+  const hasRimPayload = cameraPosition === 'back' && Boolean(rim?.detected && rim.box);
+  const showFallbackHoopGuide = cameraPosition === 'back' && !hasRimPayload;
 
   return (
     <View style={[styles.frame, style]}>
@@ -189,77 +113,56 @@ export function SessionCameraView({
         <View style={[styles.gridLineHorizontal, { top: '76%' }]} />
       </View>
 
-      {isNativeCameraSupported && canStartSession && device ? (
-        <Camera
-          style={StyleSheet.absoluteFill}
-          device={device}
-          enableBufferCompression
-          enableFpsGraph={processorAvailable && mode === 'live' && __DEV__}
-          format={format}
-          fps={sessionConfig.targetFps}
-          frameProcessor={processorAvailable ? frameProcessor : undefined}
-          isActive
-          onError={(error) => {
-            setCameraError(error.message);
-            setPreviewPhase('error');
-          }}
-          onInitialized={() => {
-            setCameraError(null);
-            setPreviewPhase('warming');
-          }}
-          onPreviewStarted={() => {
-            setCameraError(null);
-            setPreviewPhase('ready');
-          }}
-          pixelFormat="yuv"
-          resizeMode="cover"
-          videoHdr={false}
-          videoStabilizationMode="off"
-        />
+      {canRenderCamera ? (
+        <>
+          <Camera
+            style={StyleSheet.absoluteFill}
+            device={device!}
+            enableBufferCompression
+            enableFpsGraph={false}
+            format={format}
+            fps={sessionConfig.targetFps}
+            frameProcessor={processorAvailable && showOverlays ? frameProcessor : undefined}
+            isActive
+            onError={(error) => {
+              setCameraError(error.message);
+              setPreviewPhase('error');
+            }}
+            onInitialized={() => {
+              setCameraError(null);
+              setPreviewPhase('warming');
+            }}
+            onPreviewStarted={() => {
+              setCameraError(null);
+              setPreviewPhase('ready');
+            }}
+            pixelFormat="yuv"
+            resizeMode="cover"
+            videoHdr={false}
+            videoStabilizationMode="off"
+          />
+          <View style={styles.detectionLayer} pointerEvents="none">
+            {showFallbackHoopGuide ? (
+              <BoundingBoxOverlay box={hoopROI} dashed label="Hoop search" tone="warning" />
+            ) : null}
+            {hasRimPayload && rim?.box ? (
+              <BoundingBoxOverlay
+                box={rim.box}
+                dashed={normalizeRimSource(rim) === 'reference'}
+                label={rimOverlayLabel(rim)}
+                tone={rimOverlayTone(rim)}
+              />
+            ) : null}
+            {cameraPosition === 'back' &&
+            latestFrameResult?.shooter?.tracked &&
+            latestFrameResult.shooter.box ? (
+              <BoundingBoxOverlay box={latestFrameResult.shooter.box} label="Player" tone="accent" />
+            ) : null}
+          </View>
+        </>
       ) : null}
 
-      <View style={styles.scanTint} />
-      <View style={styles.vignette} />
-
-      {isNativeCameraSupported && canStartSession && device ? (
-        <>
-          <HoopOverlay hoopROI={hoopROI} />
-          {mode === 'calibration' && (shooterSeed?.trackedHoopers?.length ?? 0) > 0
-            ? shooterSeed?.trackedHoopers?.map((hooper, index) =>
-                hooper.initialBox ? (
-                  <BoundingBoxOverlay
-                    key={hooper.id}
-                    box={hooper.initialBox}
-                    dashed
-                    label={index === 0 ? 'Primary scan' : `Hooper ${index + 1}`}
-                    tone={index === 0 ? 'success' : 'neutral'}
-                  />
-                ) : null,
-              )
-            : null}
-          {mode === 'calibration' && (shooterSeed?.trackedHoopers?.length ?? 0) === 0 && shooterSeed?.initialBox ? (
-            <BoundingBoxOverlay
-              box={shooterSeed.initialBox}
-              dashed
-              label="Shooter zone"
-              tone="neutral"
-            />
-          ) : null}
-          {latestFrameResult?.rim?.box ? (
-            <BoundingBoxOverlay box={latestFrameResult.rim.box} label="Rim lock" tone="warning" />
-          ) : null}
-          {latestFrameResult?.shooter?.box ? (
-            <BoundingBoxOverlay
-              box={latestFrameResult.shooter.box}
-              label={mode === 'calibration' ? 'Shooter seed' : 'Shooter lock'}
-              tone="success"
-            />
-          ) : null}
-          {latestFrameResult?.ball?.box ? (
-            <BoundingBoxOverlay box={latestFrameResult.ball.box} label="Ball" tone="accent" />
-          ) : null}
-        </>
-      ) : (
+      {!canRenderCamera ? (
         <View style={styles.fallbackPanel}>
           <Text style={styles.fallbackEyebrow}>
             {isNativeCameraSupported ? 'Camera access required' : 'Unsupported platform'}
@@ -274,52 +177,49 @@ export function SessionCameraView({
           </Text>
           {isNativeCameraSupported ? (
             <View style={styles.fallbackActions}>
-              <PrimaryButton onPress={() => void requestCameraAccess()}>Grant Camera Access</PrimaryButton>
+              <PrimaryButton onPress={() => void handleRequestCameraAccess()}>Grant Camera Access</PrimaryButton>
               <PrimaryButton onPress={() => openSystemSettings()} variant="secondary" disabled={!needsSettings}>
                 Open Settings
               </PrimaryButton>
             </View>
           ) : null}
         </View>
-      )}
+      ) : null}
 
-      <View style={styles.topBar}>
-        <Text style={styles.modeTag}>{mode === 'calibration' ? 'Calibration Loop' : 'Live Track'}</Text>
-        <View style={styles.headerChips}>
-          <Text style={styles.metaChip}>{processorAvailable ? 'Native bridge live' : 'JS camera shell'}</Text>
-          <Text style={styles.metaChip}>{sessionConfig.targetFps} fps</Text>
-        </View>
-      </View>
-
-      <View style={styles.statusRail}>
-        {statusItems.map((item) => (
-          <View key={item.label} style={[styles.statusCard, item.active ? styles.statusCardActive : null]}>
-            <Text style={styles.statusLabel}>{item.label}</Text>
-            <Text style={styles.statusValue}>{item.value}</Text>
-          </View>
-        ))}
-      </View>
-
-      <View style={styles.signalDeck}>
-        <View style={styles.signalPill}>
-          <Text style={styles.signalLabel}>Shooter</Text>
-          <Text style={styles.signalValue}>{formatSignal(latestFrameResult?.shooter?.confidence)}</Text>
-        </View>
-        <View style={styles.signalPill}>
-          <Text style={styles.signalLabel}>Rim</Text>
-          <Text style={styles.signalValue}>{formatSignal(latestFrameResult?.rim?.confidence)}</Text>
-        </View>
-      </View>
-
-      <View style={styles.guideCard}>
-        <Text style={styles.guideEyebrow}>{mode === 'calibration' ? 'Guidance' : 'Tracking'}</Text>
-        <Text style={styles.guideCopy}>{guidance}</Text>
-        {latestFrameResult?.warnings.length ? (
-          <Text style={styles.warningText}>Warning: {latestFrameResult.warnings.join(', ')}</Text>
-        ) : null}
-      </View>
     </View>
   );
+}
+
+function normalizeRimSource(rim: NonNullable<NativeFrameResult['rim']>): 'reference' | 'detected' | 'refined' {
+  if (rim.source === 'detected' || rim.source === 'refined') {
+    return rim.source;
+  }
+
+  return 'reference';
+}
+
+function rimOverlayLabel(rim: NonNullable<NativeFrameResult['rim']>) {
+  switch (normalizeRimSource(rim)) {
+    case 'refined':
+      return 'Hoop locked';
+    case 'detected':
+      return 'Locking hoop…';
+    case 'reference':
+    default:
+      return 'Scanning rim…';
+  }
+}
+
+function rimOverlayTone(rim: NonNullable<NativeFrameResult['rim']>): 'accent' | 'success' | 'warning' | 'neutral' {
+  switch (normalizeRimSource(rim)) {
+    case 'refined':
+      return 'success';
+    case 'detected':
+      return 'accent';
+    case 'reference':
+    default:
+      return 'warning';
+  }
 }
 
 const styles = StyleSheet.create({
@@ -336,6 +236,10 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: '#09090b',
   },
+  detectionLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 4,
+  },
   gridLineVertical: {
     backgroundColor: 'rgba(255,255,255,0.05)',
     bottom: 0,
@@ -349,17 +253,6 @@ const styles = StyleSheet.create({
     left: 0,
     position: 'absolute',
     right: 0,
-  },
-  scanTint: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(4, 12, 9, 0.10)',
-  },
-  vignette: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.14)',
-    shadowColor: '#000000',
-    shadowOpacity: 0.7,
-    shadowRadius: 32,
   },
   fallbackPanel: {
     alignItems: 'flex-start',
@@ -390,119 +283,5 @@ const styles = StyleSheet.create({
   fallbackActions: {
     gap: spacing.sm,
     width: '100%',
-  },
-  topBar: {
-    alignItems: 'flex-start',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    left: spacing.md,
-    position: 'absolute',
-    right: spacing.md,
-    top: spacing.md,
-    zIndex: 3,
-  },
-  modeTag: {
-    backgroundColor: 'rgba(255, 56, 92, 0.12)',
-    borderRadius: radius.pill,
-    color: palette.accent,
-    fontSize: 11,
-    fontWeight: '800',
-    overflow: 'hidden',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    textTransform: 'uppercase',
-  },
-  headerChips: {
-    alignItems: 'flex-end',
-    gap: spacing.xs,
-  },
-  metaChip: {
-    backgroundColor: 'rgba(5,5,5,0.62)',
-    borderRadius: radius.pill,
-    color: palette.text,
-    fontSize: 11,
-    fontWeight: '700',
-    overflow: 'hidden',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    textTransform: 'uppercase',
-  },
-  statusRail: {
-    bottom: 112,
-    gap: spacing.xs,
-    left: spacing.md,
-    position: 'absolute',
-    width: 104,
-    zIndex: 3,
-  },
-  statusCard: {
-    backgroundColor: 'rgba(6,6,8,0.72)',
-    borderColor: 'rgba(255,255,255,0.08)',
-    borderRadius: radius.md,
-    borderWidth: 1,
-    gap: 2,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-  },
-  statusCardActive: {
-    borderColor: 'rgba(52, 199, 89, 0.45)',
-  },
-  statusLabel: {
-    color: palette.textSubtle,
-    ...typography.overline,
-  },
-  statusValue: {
-    color: palette.text,
-    ...typography.caption,
-  },
-  signalDeck: {
-    gap: spacing.xs,
-    position: 'absolute',
-    right: spacing.md,
-    top: 88,
-    zIndex: 3,
-  },
-  signalPill: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(6,6,8,0.72)',
-    borderColor: 'rgba(255,255,255,0.08)',
-    borderRadius: radius.md,
-    borderWidth: 1,
-    gap: 2,
-    minWidth: 96,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-  },
-  signalLabel: {
-    color: palette.textSubtle,
-    ...typography.overline,
-  },
-  signalValue: {
-    color: palette.text,
-    ...typography.caption,
-  },
-  guideCard: {
-    backgroundColor: 'rgba(5,5,5,0.82)',
-    borderTopColor: 'rgba(255,255,255,0.08)',
-    borderTopWidth: 1,
-    bottom: 0,
-    gap: spacing.xxs,
-    left: 0,
-    padding: spacing.md,
-    position: 'absolute',
-    right: 0,
-    zIndex: 3,
-  },
-  guideEyebrow: {
-    color: palette.warning,
-    ...typography.overline,
-  },
-  guideCopy: {
-    color: palette.text,
-    ...typography.body,
-  },
-  warningText: {
-    color: palette.warning,
-    ...typography.callout,
   },
 });

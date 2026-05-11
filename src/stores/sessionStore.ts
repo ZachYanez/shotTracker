@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import { create } from 'zustand';
 
 import {
+  advancePhoneStillnessTracker,
   advanceCalibrationTracker,
   createInitialCalibrationReadiness,
   createInitialCalibrationTracker,
@@ -48,6 +49,34 @@ const initialShooterSeed: ShooterSeed = {
   trackedHoopers: [],
 };
 
+function lerpHoopRoi(a: HoopROI, b: HoopROI, t: number): HoopROI {
+  let x = a.x + (b.x - a.x) * t;
+  let y = a.y + (b.y - a.y) * t;
+  let w = a.width + (b.width - a.width) * t;
+  let h = a.height + (b.height - a.height) * t;
+  w = Math.max(0.04, Math.min(0.55, w));
+  h = Math.max(0.04, Math.min(0.42, h));
+  x = Math.max(0, Math.min(0.98, x));
+  y = Math.max(0, Math.min(0.98, y));
+  if (x + w > 1) x = 1 - w;
+  if (y + h > 1) y = 1 - h;
+  return { x, y, width: w, height: h };
+}
+
+/** Move store `hoopROI` toward native rim box when CV actually found the rim (not `reference`, which mirrors the prior). */
+function selfPlaceHoopRoiFromRim(current: HoopROI, rim: NativeFrameResult['rim']): HoopROI | null {
+  if (!rim?.detected || !rim.box) return null;
+  const c = rim.confidence;
+  const src = rim.source;
+  if (src === 'refined' && c >= 0.48) {
+    return lerpHoopRoi(current, rim.box, 0.34);
+  }
+  if (src === 'detected' && c >= 0.46) {
+    return lerpHoopRoi(current, rim.box, 0.28);
+  }
+  return null;
+}
+
 function createInitialLiveStats(): LiveSessionStats {
   return {
     attempts: 0,
@@ -89,8 +118,10 @@ type SessionStore = {
   recordMockShot: (made: boolean) => void;
   recordProcessorWarning: (warning: NativeWarning) => void;
   ingestNativeFrameResult: (result: NativeFrameResult) => void;
+  setCalibrationPhoneStillness: (phoneStableMs: number) => void;
   resetCalibrationPreview: () => void;
   scanHooperFromLatestFrame: () => void;
+  capturePlayerReference: () => void;
   clearScannedHoopers: () => void;
   setCalibration: (input: { hoopROI: HoopROI; shooterSeed?: ShooterSeed; manual?: boolean }) => void;
 };
@@ -201,6 +232,21 @@ function createHooperProfileFromFrameResult(result: NativeFrameResult, existingC
     initialBox: result.shooter.box,
     torsoColor: result.shooter.appearance?.torsoColor,
     confidence: result.shooter.confidence,
+  };
+}
+
+function createFallbackHooperProfile(existingCount: number): HooperProfile {
+  return {
+    id: createLocalId('hooper'),
+    label: existingCount === 0 ? 'Player reference' : `Reference ${existingCount + 1}`,
+    scannedAt: new Date().toISOString(),
+    initialBox: {
+      x: 0.32,
+      y: 0.16,
+      width: 0.36,
+      height: 0.68,
+    },
+    confidence: 0.72,
   };
 }
 
@@ -403,12 +449,15 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         ...result,
         timestampMs: normalizedTimestampMs,
       };
+      const autoHoopROI = selfPlaceHoopRoiFromRim(state.hoopROI, result.rim);
+      const hoopPatch = autoHoopROI ? { hoopROI: autoHoopROI } : {};
 
       if (!state.activeSession) {
         return {
           calibrationReadiness: nextCalibrationTracker.readiness,
           calibrationTracker: nextCalibrationTracker,
           latestFrameResult: nextLatestFrameResult,
+          ...hoopPatch,
         };
       }
 
@@ -461,6 +510,16 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         lastNativeTelemetrySignature: nextLastNativeTelemetrySignature,
         lastNativeTelemetryAtMs: nextLastNativeTelemetryAtMs,
         shotEvents: nextShotEvents,
+        ...hoopPatch,
+      };
+    }),
+  setCalibrationPhoneStillness: (phoneStableMs) =>
+    set((state) => {
+      const nextCalibrationTracker = advancePhoneStillnessTracker(state.calibrationTracker, phoneStableMs);
+
+      return {
+        calibrationReadiness: nextCalibrationTracker.readiness,
+        calibrationTracker: nextCalibrationTracker,
       };
     }),
   resetCalibrationPreview: () =>
@@ -468,6 +527,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       latestFrameResult: undefined,
       calibrationReadiness: createInitialCalibrationReadiness(),
       calibrationTracker: createInitialCalibrationTracker(),
+      hoopROI: initialHoopROI,
     }),
   scanHooperFromLatestFrame: () =>
     set((state) => {
@@ -486,6 +546,20 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
       return {
         shooterSeed: buildShooterSeedWithHooper(state.shooterSeed, hooper),
+      };
+    }),
+  capturePlayerReference: () =>
+    set((state) => {
+      const existingCount = state.shooterSeed?.trackedHoopers?.length ?? 0;
+      const hooper = state.latestFrameResult
+        ? createHooperProfileFromFrameResult(state.latestFrameResult, existingCount)
+        : null;
+
+      return {
+        shooterSeed: buildShooterSeedWithHooper(
+          state.shooterSeed,
+          hooper ?? createFallbackHooperProfile(existingCount),
+        ),
       };
     }),
   clearScannedHoopers: () =>

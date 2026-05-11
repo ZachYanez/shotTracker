@@ -1,16 +1,17 @@
 import { create } from 'zustand';
 
 import { getPendingSyncCounts } from '@/lib/db/localSessions';
+import { syncPendingSessionsToSupabase, type SessionSyncResult } from '@/lib/supabase/sessionSync';
 
 type SyncStore = {
   pendingSessions: number;
   pendingEvents: number;
   isSyncing: boolean;
   lastSyncedAt?: string;
+  lastError?: string;
   hydrate: () => Promise<void>;
   refreshCounts: () => Promise<void>;
-  markSyncStarted: () => void;
-  markSyncFinished: () => void;
+  syncNow: () => Promise<SessionSyncResult>;
 };
 
 export const useSyncStore = create<SyncStore>((set) => ({
@@ -18,6 +19,7 @@ export const useSyncStore = create<SyncStore>((set) => ({
   pendingEvents: 0,
   isSyncing: false,
   lastSyncedAt: undefined,
+  lastError: undefined,
   hydrate: async () => {
     try {
       const counts = await getPendingSyncCounts();
@@ -34,12 +36,34 @@ export const useSyncStore = create<SyncStore>((set) => ({
       console.warn('Sync counts refresh failed', error);
     }
   },
-  markSyncStarted: () => set({ isSyncing: true }),
-  markSyncFinished: () =>
-    set({
-      isSyncing: false,
-      pendingSessions: 0,
-      pendingEvents: 0,
-      lastSyncedAt: new Date().toISOString(),
-    }),
+  syncNow: async () => {
+    set({ isSyncing: true, lastError: undefined });
+
+    try {
+      const result = await syncPendingSessionsToSupabase();
+      const counts = await getPendingSyncCounts();
+
+      set({
+        ...counts,
+        isSyncing: false,
+        lastSyncedAt: new Date().toISOString(),
+      });
+
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Sync failed.';
+      const counts = await getPendingSyncCounts().catch(() => ({
+        pendingSessions: 0,
+        pendingEvents: 0,
+      }));
+
+      set({
+        ...counts,
+        isSyncing: false,
+        lastError: message,
+      });
+
+      throw error;
+    }
+  },
 }));

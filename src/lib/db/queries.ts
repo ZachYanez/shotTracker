@@ -21,9 +21,20 @@ export const sessionQueries = {
     WHERE sync_state != 'synced'
     ORDER BY started_at ASC;
   `,
+  setLocalSessionRemoteId: `
+    UPDATE local_sessions
+    SET remote_id = ?
+    WHERE id = ?;
+  `,
+  updateLocalSessionSyncState: `
+    UPDATE local_sessions
+    SET sync_state = ?
+    WHERE id = ?;
+  `,
   upsertLocalSession: `
     INSERT OR REPLACE INTO local_sessions (
       id,
+      remote_id,
       started_at,
       ended_at,
       duration_seconds,
@@ -35,7 +46,7 @@ export const sessionQueries = {
       best_streak,
       status,
       sync_state
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
   `,
 };
 
@@ -63,6 +74,16 @@ export const shotEventQueries = {
     FROM local_shot_events
     WHERE sync_state != 'synced'
     ORDER BY timestamp_ms ASC;
+  `,
+  setLocalShotEventRemoteId: `
+    UPDATE local_shot_events
+    SET remote_id = ?
+    WHERE id = ?;
+  `,
+  updateLocalShotEventsSyncStateBySessionId: `
+    UPDATE local_shot_events
+    SET sync_state = ?
+    WHERE session_id = ?;
   `,
   pendingLocalShotEventCount: `
     SELECT COUNT(*) AS count
@@ -111,11 +132,17 @@ export const calibrationQueries = {
   upsertLocalSessionCalibration: `
     INSERT OR REPLACE INTO local_session_calibrations (
       id,
+      remote_id,
       session_id,
       hoop_roi,
       shooter_seed,
       device_info
-    ) VALUES (?, ?, ?, ?, ?);
+    ) VALUES (?, ?, ?, ?, ?, ?);
+  `,
+  setLocalSessionCalibrationRemoteId: `
+    UPDATE local_session_calibrations
+    SET remote_id = ?
+    WHERE id = ?;
   `,
 };
 
@@ -124,5 +151,18 @@ export const syncQueries = {
     SELECT COUNT(*) AS count
     FROM local_sessions
     WHERE sync_state != 'synced';
+  `,
+};
+
+export const localSettingsQueries = {
+  getValue: `
+    SELECT value
+    FROM local_settings
+    WHERE key = ?
+    LIMIT 1;
+  `,
+  upsert: `
+    INSERT OR REPLACE INTO local_settings (key, value)
+    VALUES (?, ?);
   `,
 };

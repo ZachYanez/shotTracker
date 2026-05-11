@@ -1,6 +1,3 @@
 /// <reference types="expo/types" />
-/// <reference types="expo-router/types" />
 
-declare const process: {
-  env: Record<string, string | undefined>;
-};
+// NOTE: This file should not be edited and should be in your git ignore

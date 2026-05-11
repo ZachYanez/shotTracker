@@ -12,6 +12,7 @@ const MAX_FRAME_WINDOW_MS = 250;
 
 type CalibrationTracker = {
   lastTimestampMs?: number;
+  phoneStableMs: number;
   rimStableMs: number;
   shooterStableMs: number;
   readiness: CalibrationReadiness;
@@ -22,16 +23,31 @@ function clamp(value: number, min: number, max: number) {
 }
 
 function buildSteps(
+  phoneStableMs: number,
   rimStableMs: number,
   shooterStableMs: number,
   warnings: NativeWarning[],
 ): CalibrationReadinessStep[] {
+  const phoneComplete = phoneStableMs >= CALIBRATION_STABLE_TARGET_MS;
   const hoopComplete = rimStableMs >= CALIBRATION_STABLE_TARGET_MS;
   const shooterComplete = shooterStableMs >= CALIBRATION_STABLE_TARGET_MS;
   const hardWarning =
     warnings.includes('hoop_lost') || warnings.includes('shooter_lost') || warnings.includes('low_confidence');
 
   return [
+    {
+      id: 'phone',
+      label: 'Phone steady',
+      status: phoneComplete ? 'complete' : phoneStableMs > 0 ? 'active' : 'pending',
+      detail: phoneComplete
+        ? 'Camera motion is low enough to scan the scene.'
+        : phoneStableMs > 0
+          ? `Hold still for ${Math.max(
+              0.1,
+              (CALIBRATION_STABLE_TARGET_MS - phoneStableMs) / 1000,
+            ).toFixed(1)}s more.`
+          : 'Rest the phone on a tripod, ledge, or stable surface.',
+    },
     {
       id: 'hoop',
       label: 'Hoop lock',
@@ -61,18 +77,19 @@ function buildSteps(
     {
       id: 'ready',
       label: 'Start live',
-      status: hoopComplete && shooterComplete && !hardWarning ? 'complete' : 'pending',
+      status: phoneComplete && hoopComplete && shooterComplete && !hardWarning ? 'complete' : 'pending',
       detail:
-        hoopComplete && shooterComplete && !hardWarning
+        phoneComplete && hoopComplete && shooterComplete && !hardWarning
           ? 'Calibration is locked. You can start the live shot tracker.'
           : hardWarning
             ? 'Tracking dropped. Re-center the hoop and restage the shooter.'
-            : 'Both locks need to settle before live scoring starts.',
+            : 'The phone, hoop, and shooter all need to settle before live scoring starts.',
     },
   ];
 }
 
 function buildRecommendation(
+  phoneStableMs: number,
   rimStableMs: number,
   shooterStableMs: number,
   warnings: NativeWarning[],
@@ -94,8 +111,12 @@ function buildRecommendation(
     return 'Pose confidence is weak. Use a steadier angle and keep the shooter fully inside the frame.';
   }
 
+  if (phoneStableMs <= 0) {
+    return 'Steady the phone first. A tripod or ledge gives the hoop scan a clean frame.';
+  }
+
   if (rimStableMs <= 0) {
-    return 'Align the hoop inside the guide first. The live tracker needs a stable rim reference.';
+    return 'Scanning for the hoop. Keep the rim visible while the lock builds.';
   }
 
   if (shooterStableMs <= 0) {
@@ -106,18 +127,21 @@ function buildRecommendation(
 }
 
 function buildReadiness(
+  phoneStableMs: number,
   rimStableMs: number,
   shooterStableMs: number,
   warnings: NativeWarning[],
 ): CalibrationReadiness {
   const readinessScore = Number(
     (
-      (clamp(rimStableMs, 0, CALIBRATION_STABLE_TARGET_MS) +
+      (clamp(phoneStableMs, 0, CALIBRATION_STABLE_TARGET_MS) +
+        clamp(rimStableMs, 0, CALIBRATION_STABLE_TARGET_MS) +
         clamp(shooterStableMs, 0, CALIBRATION_STABLE_TARGET_MS)) /
-      (CALIBRATION_STABLE_TARGET_MS * 2)
+      (CALIBRATION_STABLE_TARGET_MS * 3)
     ).toFixed(2),
   );
   const readyToStart =
+    phoneStableMs >= CALIBRATION_STABLE_TARGET_MS &&
     rimStableMs >= CALIBRATION_STABLE_TARGET_MS &&
     shooterStableMs >= CALIBRATION_STABLE_TARGET_MS &&
     !warnings.includes('hoop_lost') &&
@@ -128,6 +152,8 @@ function buildReadiness(
 
   if (readyToStart) {
     status = 'ready';
+  } else if (phoneStableMs <= 0) {
+    status = 'steadying_phone';
   } else if (rimStableMs <= 0) {
     status = 'aligning_hoop';
   } else if (shooterStableMs <= 0) {
@@ -140,21 +166,23 @@ function buildReadiness(
     readyToStart,
     readinessScore,
     stableTargetMs: CALIBRATION_STABLE_TARGET_MS,
+    phoneStableMs,
     rimStableMs,
     shooterStableMs,
     warnings,
-    recommendation: buildRecommendation(rimStableMs, shooterStableMs, warnings, readyToStart),
-    steps: buildSteps(rimStableMs, shooterStableMs, warnings),
+    recommendation: buildRecommendation(phoneStableMs, rimStableMs, shooterStableMs, warnings, readyToStart),
+    steps: buildSteps(phoneStableMs, rimStableMs, shooterStableMs, warnings),
   };
 }
 
 export function createInitialCalibrationReadiness(): CalibrationReadiness {
-  return buildReadiness(0, 0, []);
+  return buildReadiness(0, 0, 0, []);
 }
 
 export function createInitialCalibrationTracker(): CalibrationTracker {
   return {
     lastTimestampMs: undefined,
+    phoneStableMs: 0,
     rimStableMs: 0,
     shooterStableMs: 0,
     readiness: createInitialCalibrationReadiness(),
@@ -176,9 +204,28 @@ export function advanceCalibrationTracker(
 
   return {
     lastTimestampMs: result.timestampMs,
+    phoneStableMs: tracker.phoneStableMs,
     rimStableMs,
     shooterStableMs,
-    readiness: buildReadiness(rimStableMs, shooterStableMs, result.warnings),
+    readiness: buildReadiness(tracker.phoneStableMs, rimStableMs, shooterStableMs, result.warnings),
+  };
+}
+
+export function advancePhoneStillnessTracker(
+  tracker: CalibrationTracker,
+  phoneStableMs: number,
+): CalibrationTracker {
+  const nextPhoneStableMs = clamp(phoneStableMs, 0, CALIBRATION_STABLE_TARGET_MS);
+
+  return {
+    ...tracker,
+    phoneStableMs: nextPhoneStableMs,
+    readiness: buildReadiness(
+      nextPhoneStableMs,
+      tracker.rimStableMs,
+      tracker.shooterStableMs,
+      tracker.readiness.warnings,
+    ),
   };
 }
 
@@ -216,6 +263,8 @@ export function formatCalibrationStatusLabel(readiness?: CalibrationReadiness) {
       return readiness.source === 'manual' ? 'Manual lock' : 'Locked';
     case 'manual_override':
       return 'Manual save';
+    case 'steadying_phone':
+      return 'Steady phone';
     case 'aligning_hoop':
       return 'Align hoop';
     case 'staging_shooter':

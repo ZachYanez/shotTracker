@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-import { listLocalSessions, seedLocalSessionsIfEmpty } from '@/lib/db/localSessions';
+import { listLocalSessions, seedLocalSessionsIfEmpty, deleteAllLocalSessionData } from '@/lib/db/localSessions';
 import type { SessionSummary } from '@/types/session';
 
 const seedSessions: SessionSummary[] = [
@@ -53,6 +53,7 @@ type HistoryStore = {
   isHydrated: boolean;
   hydrate: () => Promise<void>;
   addSession: (session: SessionSummary) => void;
+  clearAllSessions: () => Promise<void>;
 };
 
 function sortSessions(sessions: SessionSummary[]) {
@@ -90,4 +91,8 @@ export const useHistoryStore = create<HistoryStore>((set) => ({
     set((state) => ({
       sessions: mergeSession(state.sessions, session),
     })),
+  clearAllSessions: async () => {
+    await deleteAllLocalSessionData();
+    set({ sessions: [] });
+  },
 }));

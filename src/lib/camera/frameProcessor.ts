@@ -2,7 +2,28 @@ import { VisionCameraProxy, type Frame } from 'react-native-vision-camera';
 
 import type { HoopROI, NativeFrameResult, SessionConfig, ShooterSeed } from '@/types/session';
 
-export const BASKETBALL_PROCESSOR_PLUGIN = 'basketballSessionProcessor';
+type BasketballSessionProcessorModule = {
+  processorPluginName?: string;
+  getNativeBootstrapInfo?: () => {
+    processorPluginName: string;
+  };
+};
+
+function loadBasketballProcessorModule() {
+  try {
+    return require('../../../modules/basketball-session-processor').default as BasketballSessionProcessorModule;
+  } catch {
+    return undefined;
+  }
+}
+
+const basketballProcessorModule = loadBasketballProcessorModule();
+const basketballProcessorBootstrap = basketballProcessorModule?.getNativeBootstrapInfo?.();
+
+export const BASKETBALL_PROCESSOR_PLUGIN =
+  basketballProcessorBootstrap?.processorPluginName ??
+  basketballProcessorModule?.processorPluginName ??
+  'basketballSessionProcessor';
 
 type ProcessorParams = {
   sessionConfig: SessionConfig;
